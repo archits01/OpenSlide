@@ -1,0 +1,1171 @@
+{
+  "version": 3,
+  "description": "Slide skill routing graph — maps user intent to the correct subdomain + presentation type",
+  "subdomains": {
+    "business_corporate/investment_finance": {
+      "label": "Investment & Finance",
+      "when": "For investors, boards, or finance leadership. Raising money, reporting financials, M&A, budget approvals.",
+      "not": "Internal ops updates (→ operations_reporting), strategy/planning (→ strategy_planning), selling to customers (→ sales)",
+      "types": {
+        "board_deck": {
+          "what": "Quarterly/monthly board of directors meeting — company performance, decisions required, strategic updates, financial health.",
+          "audience": "Board of directors: independent directors, investor-appointed members.",
+          "triggers": [
+            "board deck",
+            "board meeting",
+            "board update",
+            "board presentation",
+            "board report"
+          ],
+          "not_this": "If presenting strategy to leadership (not board) → strategy_presentation. If exec briefing on one topic → executive_briefing (operations).",
+          "similar": [
+            "earnings_presentation",
+            "quarterly_business_review_internal"
+          ]
+        },
+        "series_a_deck": {
+          "what": "Series A fundraising presentation — market opportunity, product differentiation, traction, team, investment thesis.",
+          "audience": "Series A investors: partners at institutional VC firms.",
+          "triggers": [
+            "series a deck",
+            "series a pitch",
+            "series a fundraise",
+            "raising series a"
+          ],
+          "similar": [
+            "fundraising_roadshow",
+            "investor_pitch_seed_deck"
+          ],
+          "not_this": "If selling product to customers → sales_pitch_deck. If describing company to employees → culture_deck. 'I'm a Series A company' is context, not intent."
+        },
+        "investor_pitch_seed_deck": {
+          "what": "Pre-seed or seed stage fundraising — team, market thesis, early product before substantial traction.",
+          "audience": "Angels, pre-seed/seed VCs, accelerators.",
+          "triggers": [
+            "seed round",
+            "pre-seed",
+            "seed deck",
+            "angel pitch",
+            "accelerator pitch",
+            "YC application",
+            "startup pitch investors"
+          ],
+          "similar": [
+            "series_a_deck",
+            "fundraising_roadshow"
+          ],
+          "not_this": "If the startup is selling to customers → sales_pitch_deck. If later stage (Series B+) → fundraising_roadshow."
+        },
+        "fundraising_roadshow": {
+          "what": "Polished investor pitch for formal fundraising — presented to multiple investors over a short period.",
+          "audience": "Institutional VCs, growth equity, strategic investors, family offices.",
+          "triggers": [
+            "investor presentation",
+            "investor pitch",
+            "fundraising deck",
+            "roadshow",
+            "series b",
+            "series c",
+            "raising capital",
+            "investor deck"
+          ],
+          "similar": [
+            "series_a_deck",
+            "investor_pitch_seed_deck"
+          ],
+          "not_this": "If selling product to customers → sales_pitch_deck."
+        },
+        "earnings_presentation": {
+          "what": "Quarterly/annual financial results for investors and analysts — performance vs guidance, drivers, forward guidance.",
+          "audience": "Public market investors, equity analysts, institutional holders.",
+          "triggers": [
+            "earnings report",
+            "earnings call",
+            "quarterly earnings",
+            "annual report",
+            "financial results",
+            "shareholder update"
+          ],
+          "not_this": "If internal performance review → quarterly_business_review_internal. If for board only → board_deck."
+        },
+        "quarterly_business_review_internal": {
+          "what": "Internal QBR for senior leadership — company performance vs plan across all functions.",
+          "audience": "CEO, CFO, executive leadership team.",
+          "triggers": [
+            "quarterly business review",
+            "qbr",
+            "internal review",
+            "financial review",
+            "quarterly review internal",
+            "performance vs plan"
+          ],
+          "not_this": "If reviewing WITH a customer → customer_qbr (sales). If for public investors → earnings_presentation. If for the board → board_deck.",
+          "similar": [
+            "board_deck",
+            "operational_review"
+          ]
+        },
+        "analyst_investor_day": {
+          "what": "Multi-hour investor/analyst event — long-term strategy, financial model, market leadership.",
+          "audience": "Buy-side analysts, portfolio managers, sell-side equity analysts.",
+          "triggers": [
+            "analyst day",
+            "investor day",
+            "capital markets day",
+            "investor event"
+          ]
+        },
+        "ma_due_diligence": {
+          "what": "Overview for a potential acquirer or investment committee — target's business, financials, strategic fit, diligence findings.",
+          "audience": "Investment committee, CEO/CFO, board M&A committee.",
+          "triggers": [
+            "due diligence",
+            "m&a",
+            "acquisition",
+            "merger",
+            "deal overview",
+            "acquisition target"
+          ],
+          "not_this": "If analyzing competitors strategically → competitive_analysis (strategy)."
+        },
+        "budget_proposal": {
+          "what": "Annual operating budget presentation — revenue targets, cost plans, investment priorities, headcount.",
+          "audience": "CFO, CEO, board, department heads.",
+          "triggers": [
+            "budget proposal",
+            "annual budget",
+            "budget presentation",
+            "budget approval",
+            "budget request"
+          ],
+          "not_this": "If proposing one specific initiative → business_case_proposal (strategy). If asking investors for money → fundraising_roadshow.",
+          "similar": [
+            "business_case_proposal"
+          ]
+        }
+      }
+    },
+    "business_corporate/operations_reporting": {
+      "label": "Operations & Reporting",
+      "when": "Internal operational updates. What's happening, what's blocked, how things are running. Status, reviews, retrospectives. Audience is INTERNAL teams/leadership.",
+      "not": "Investor or finance focused (→ investment_finance), strategy and planning (→ strategy_planning), selling to customers (→ sales)",
+      "types": {
+        "all_hands_meeting": {
+          "what": "Company-wide meeting — performance updates, strategic context, team news, culture moments.",
+          "audience": "All employees across functions and levels.",
+          "triggers": [
+            "all hands",
+            "all-hands",
+            "town hall",
+            "company meeting",
+            "company-wide update",
+            "company update"
+          ],
+          "not_this": "If only for leadership → executive_briefing. If about culture/values specifically → culture_deck (people).",
+          "similar": [
+            "executive_briefing"
+          ]
+        },
+        "executive_briefing": {
+          "what": "Concise high-stakes presentation to senior execs — inform a decision, update on critical situation.",
+          "audience": "C-suite in a 15-30 minute slot.",
+          "triggers": [
+            "executive briefing",
+            "exec briefing",
+            "leadership briefing",
+            "ceo update",
+            "brief the ceo",
+            "executive update"
+          ],
+          "not_this": "If for all employees → all_hands_meeting. If board-level → board_deck (investment). If strategic direction → strategy_presentation (strategy).",
+          "similar": [
+            "all_hands_meeting",
+            "board_deck"
+          ]
+        },
+        "operational_review": {
+          "what": "Structured review of business operations — performance against operational KPIs, inefficiencies, improvement priorities.",
+          "audience": "COO, CFO, functional heads.",
+          "triggers": [
+            "operational review",
+            "ops review",
+            "operations update",
+            "operations performance",
+            "operational metrics"
+          ],
+          "not_this": "If financial/company-wide performance → quarterly_business_review_internal (investment). If project-specific → project_status_update.",
+          "similar": [
+            "quarterly_business_review_internal",
+            "project_status_update"
+          ]
+        },
+        "partnership_update": {
+          "what": "Update on strategic partnership — joint activities, performance vs targets, relationship health.",
+          "audience": "Internal exec team and/or partner organization's leadership.",
+          "triggers": [
+            "partnership update",
+            "partner review",
+            "alliance update",
+            "joint venture update",
+            "partnership status"
+          ]
+        },
+        "post_mortem": {
+          "what": "Analysis of what went wrong after incident/failure — root cause analysis and process changes.",
+          "audience": "Leadership, engineering and ops leads.",
+          "triggers": [
+            "post mortem",
+            "post-mortem",
+            "retrospective",
+            "incident review",
+            "lessons learned",
+            "root cause analysis",
+            "incident report"
+          ],
+          "not_this": "If about risk exposure broadly → risk_review."
+        },
+        "project_status_update": {
+          "what": "Progress report on active project — milestones, blockers, budget/timeline health, decisions needed.",
+          "audience": "Project sponsors, steering committee, exec leadership.",
+          "triggers": [
+            "project status",
+            "status update",
+            "project update",
+            "sprint review",
+            "progress report",
+            "project review",
+            "milestone update"
+          ],
+          "not_this": "If about operations broadly → operational_review. If about product roadmap → product_roadmap (strategy).",
+          "similar": [
+            "operational_review"
+          ]
+        },
+        "rfp_response": {
+          "what": "Response to a formal Request for Proposal — capability, experience, commercial terms.",
+          "audience": "Procurement committee, technical evaluators, scoring panel.",
+          "triggers": [
+            "rfp response",
+            "rfp",
+            "request for proposal",
+            "tender response",
+            "bid presentation",
+            "rfp submission"
+          ],
+          "not_this": "If a sales proposal (not responding to formal RFP) → proposal_presentation (sales)."
+        },
+        "risk_review": {
+          "what": "Assessment of key risks — exposure, controls, trajectory, actions required.",
+          "audience": "Board risk committee, audit committee, C-suite.",
+          "triggers": [
+            "risk review",
+            "risk assessment",
+            "risk report",
+            "risk management",
+            "risk analysis",
+            "risk presentation"
+          ],
+          "not_this": "If analyzing future scenarios → scenario_planning (strategy). If a specific incident → post_mortem."
+        },
+        "vendor_review": {
+          "what": "Performance review of vendor/supplier — delivery against SLAs, costs, renewal decision.",
+          "audience": "Procurement lead, operations director, CFO.",
+          "triggers": [
+            "vendor review",
+            "supplier review",
+            "vendor assessment",
+            "vendor scorecard",
+            "vendor performance"
+          ],
+          "not_this": "If reviewing a customer relationship → customer_qbr (sales)."
+        }
+      }
+    },
+    "business_corporate/people_culture": {
+      "label": "People & Culture",
+      "when": "People, HR, culture, team, and organizational topics. Internal-facing, human-first. Brand identity/guidelines are marketing unless specifically about employer brand for recruiting.",
+      "not": "Marketing employer brand campaigns (→ marketing), strategy/planning (→ strategy_planning)",
+      "types": {
+        "culture_deck": {
+          "what": "Company values, working principles, cultural identity — external employer branding or internal alignment.",
+          "audience": "Candidates, new hires, all employees, leadership.",
+          "triggers": [
+            "culture deck",
+            "company culture",
+            "values presentation",
+            "people strategy",
+            "culture presentation",
+            "our values"
+          ],
+          "not_this": "If recruiting-focused EVP → employer_branding. If company-wide news → all_hands_meeting (operations).",
+          "similar": [
+            "employer_branding"
+          ]
+        },
+        "dei_presentation": {
+          "what": "Diversity, equity, inclusion — representation data, commitments, progress, business case.",
+          "audience": "Board, all-hands, external stakeholders, ERG leadership.",
+          "triggers": [
+            "dei presentation",
+            "diversity equity inclusion",
+            "dei report",
+            "inclusion update",
+            "diversity report",
+            "dei strategy"
+          ]
+        },
+        "employer_branding": {
+          "what": "Employer value proposition (EVP) — what makes the company great to work at, talent acquisition strategy.",
+          "audience": "People leadership, CMO, CEO, recruiters.",
+          "triggers": [
+            "employer branding",
+            "employer brand",
+            "evp",
+            "talent brand",
+            "recruitment marketing",
+            "why work here"
+          ],
+          "not_this": "If about the company's product/visual brand → brand_presentation (marketing). If general culture → culture_deck.",
+          "similar": [
+            "culture_deck",
+            "brand_presentation"
+          ]
+        },
+        "onboarding_deck": {
+          "what": "New employee orientation — company, culture, tools, expectations, team.",
+          "audience": "New hires across all roles.",
+          "triggers": [
+            "onboarding deck",
+            "new hire",
+            "orientation deck",
+            "welcome presentation",
+            "first day",
+            "new employee orientation",
+            "onboarding presentation"
+          ]
+        },
+        "org_design": {
+          "what": "Organizational design change — rationale, new structure, role impacts, transition plan.",
+          "audience": "Executive leadership and/or broader organization.",
+          "triggers": [
+            "org design",
+            "org chart",
+            "reorganization",
+            "reorg",
+            "restructuring",
+            "organizational change",
+            "new structure"
+          ],
+          "not_this": "If about business strategy → strategy_presentation (strategy)."
+        },
+        "performance_review": {
+          "what": "Performance review findings, cycle results, or new performance management framework.",
+          "audience": "Leadership team or all employees.",
+          "triggers": [
+            "performance review",
+            "performance cycle",
+            "performance management",
+            "talent review",
+            "performance results",
+            "review cycle"
+          ],
+          "not_this": "If about company financial performance → quarterly_business_review_internal (investment). If about operational KPIs → operational_review (operations)."
+        },
+        "team_offsite": {
+          "what": "Working session or strategic offsite — team alignment on goals, relationships, strategy.",
+          "audience": "Leadership team, department, or cross-functional group.",
+          "triggers": [
+            "team offsite",
+            "team retreat",
+            "offsite agenda",
+            "team building",
+            "team workshop",
+            "offsite presentation",
+            "leadership offsite"
+          ],
+          "not_this": "If about OKR/goal planning specifically → okr_goal_setting (strategy)."
+        }
+      }
+    },
+    "business_corporate/strategy_planning": {
+      "label": "Strategy & Planning",
+      "when": "Internal business/product strategy and direction. What to build, where to compete, goals, priorities. Forward-looking, analytical. Audience is INTERNAL leadership/team.",
+      "not": "Marketing execution/content/campaigns/brand (→ marketing), operational status (→ operations_reporting), financial reporting (→ investment_finance). \"Marketing strategy\" is marketing, not strategy_planning.",
+      "types": {
+        "business_case_proposal": {
+          "what": "Argument for allocating budget/resources to a specific initiative — problem, solution, expected return, risks.",
+          "audience": "CFO, CEO, investment/capital committee.",
+          "triggers": [
+            "business case",
+            "business proposal",
+            "initiative proposal",
+            "investment case",
+            "convince cfo",
+            "fund a project",
+            "make the case for"
+          ],
+          "not_this": "If the whole annual budget → budget_proposal (investment). If selling to external customer → proposal_presentation (sales). If asking investors for money → fundraising_roadshow (investment).",
+          "similar": [
+            "budget_proposal",
+            "proposal_presentation"
+          ]
+        },
+        "competitive_analysis": {
+          "what": "Competitive landscape evaluation — key players, comparison dimensions, opportunities and threats.",
+          "audience": "Strategy, product, and exec leadership.",
+          "triggers": [
+            "competitive analysis",
+            "competitive landscape",
+            "competitor analysis",
+            "market analysis",
+            "competitor comparison",
+            "analyze competitors",
+            "competitive positioning",
+            "top competitors"
+          ],
+          "not_this": "If about winning a specific sales deal → competitive_battle_card (sales). If about M&A target → ma_due_diligence (investment).",
+          "similar": [
+            "competitive_battle_card",
+            "swot_strategic_review"
+          ]
+        },
+        "go_to_market_strategy": {
+          "what": "Plan for entering a market, launching a product, or scaling GTM — ICP, channels, messaging, targets.",
+          "audience": "CEO, board, VP Sales, VP Marketing.",
+          "triggers": [
+            "go to market",
+            "go-to-market",
+            "gtm strategy",
+            "gtm plan",
+            "market entry",
+            "gtm",
+            "entering a new market"
+          ],
+          "not_this": "If about the marketing campaign for the launch → product_launch_deck (marketing). If about the product itself → product_roadmap.",
+          "similar": [
+            "product_launch_deck",
+            "marketing_strategy"
+          ]
+        },
+        "okr_goal_setting": {
+          "what": "OKR planning — introducing, cascading, or reviewing objectives and key results.",
+          "audience": "Leadership, department heads, full company.",
+          "triggers": [
+            "okr",
+            "okrs",
+            "goal setting",
+            "objectives and key results",
+            "quarterly goals",
+            "annual goals",
+            "kpi targets"
+          ],
+          "not_this": "If about team alignment at offsite → team_offsite (people)."
+        },
+        "product_roadmap": {
+          "what": "Time-horizoned view of what the product team will build and why.",
+          "audience": "Internal exec team, board, customer advisory boards.",
+          "triggers": [
+            "product roadmap",
+            "roadmap presentation",
+            "feature roadmap",
+            "product plan",
+            "what we're building",
+            "product strategy"
+          ],
+          "not_this": "If about marketing a product launch → product_launch_deck (marketing). If about GTM for the product → go_to_market_strategy.",
+          "similar": [
+            "go_to_market_strategy",
+            "product_launch_deck"
+          ]
+        },
+        "scenario_planning": {
+          "what": "Analysis of 2-4 plausible futures with revenue, cost, and strategic implications.",
+          "audience": "Board, risk committee, senior exec team.",
+          "triggers": [
+            "scenario planning",
+            "scenario analysis",
+            "what-if analysis",
+            "contingency planning",
+            "multiple scenarios",
+            "best case worst case"
+          ],
+          "not_this": "If about current risks → risk_review (operations).",
+          "similar": [
+            "risk_review"
+          ]
+        },
+        "strategy_presentation": {
+          "what": "Multi-year strategic plan — where the company is, where it's going, priorities and investments.",
+          "audience": "Senior leadership (top 20-50), board.",
+          "triggers": [
+            "strategic plan",
+            "strategy presentation",
+            "corporate strategy",
+            "multi-year plan",
+            "strategic direction",
+            "company strategy",
+            "5 year plan",
+            "vision and strategy"
+          ],
+          "not_this": "If about one specific initiative → business_case_proposal. If about product specifically → product_roadmap. If about marketing → marketing_strategy.",
+          "similar": [
+            "business_case_proposal",
+            "product_roadmap"
+          ]
+        },
+        "swot_strategic_review": {
+          "what": "Strengths/weaknesses/opportunities/threats analysis to generate strategic choices.",
+          "audience": "Board, senior leadership, strategy committee.",
+          "triggers": [
+            "swot analysis",
+            "swot review",
+            "strategic review",
+            "swot",
+            "strengths weaknesses opportunities threats"
+          ],
+          "similar": [
+            "competitive_analysis",
+            "strategy_presentation"
+          ]
+        }
+      }
+    },
+    "sales_marketing/marketing": {
+      "label": "Marketing",
+      "when": "Marketing execution: brand, campaigns, content, PR, launches, media, sponsorships, influencer partnerships. For EXTERNAL audiences (customers, press, partners, sponsors, creators, the public). Job titles like Brand Director, Marketing Manager, Head of Partnerships, Creative Strategist, Content Manager signal this category.",
+      "not": "Selling 1:1 to specific customers (→ sales), internal company strategy (→ strategy_planning), employer branding for recruitment (→ people_culture). \"Marketing strategy\" and \"marketing plan\" belong HERE, not in strategy_planning.",
+      "types": {
+        "agency_pitch": {
+          "what": "Creative/digital agency pitching to win a client brief — strategy, creative approach, credentials.",
+          "audience": "Client-side: Marketing Director, CMO, Brand Director.",
+          "triggers": [
+            "agency pitch",
+            "agency proposal",
+            "creative pitch",
+            "agency credentials",
+            "win a client",
+            "agency deck"
+          ],
+          "not_this": "If selling your own product → sales_pitch_deck (sales)."
+        },
+        "brand_presentation": {
+          "what": "New or refreshed brand identity — positioning, visual system, tone of voice.",
+          "audience": "Full company, leadership, retail partners.",
+          "triggers": [
+            "brand presentation",
+            "brand deck",
+            "rebrand",
+            "brand guidelines",
+            "brand identity",
+            "visual identity",
+            "brand refresh",
+            "new brand"
+          ],
+          "not_this": "If about employer brand for recruiting → employer_branding (people_culture).",
+          "similar": [
+            "employer_branding"
+          ]
+        },
+        "campaign_presentation": {
+          "what": "Marketing campaign — strategic brief, creative concept, channel plan, budget, measurement.",
+          "audience": "CMO, VP Marketing, Regional VPs.",
+          "triggers": [
+            "campaign presentation",
+            "campaign deck",
+            "marketing campaign",
+            "campaign plan",
+            "campaign brief",
+            "ad campaign"
+          ],
+          "not_this": "If about overall marketing strategy → marketing_strategy. If about content specifically → content_strategy.",
+          "similar": [
+            "marketing_strategy",
+            "content_strategy"
+          ]
+        },
+        "content_strategy": {
+          "what": "Content plan — pillars, formats, channels, production plan, measurement.",
+          "audience": "VP Marketing, CMO.",
+          "triggers": [
+            "content strategy",
+            "content plan",
+            "editorial calendar",
+            "content marketing plan",
+            "blog strategy",
+            "social media strategy"
+          ],
+          "not_this": "If about overall business strategy → strategy_presentation (strategy). If about a specific campaign → campaign_presentation.",
+          "similar": [
+            "campaign_presentation",
+            "marketing_strategy"
+          ]
+        },
+        "event_sponsorship_proposal": {
+          "what": "Business case for event sponsorship — audience reach, ICP alignment, pipeline potential, ROI.",
+          "audience": "CEO, CFO, VP Marketing, budget committee.",
+          "triggers": [
+            "sponsorship proposal",
+            "event sponsorship",
+            "conference sponsorship",
+            "sponsorship deck",
+            "sponsor an event"
+          ],
+          "not_this": "If general budget request → business_case_proposal (strategy)."
+        },
+        "influencer_partnership_brief": {
+          "what": "Brief for influencer campaign — objectives, creator criteria, content guidelines, budget, metrics.",
+          "audience": "Influencer agency, brand partnerships team.",
+          "triggers": [
+            "influencer",
+            "influencer brief",
+            "creator partnership",
+            "influencer campaign",
+            "influencer marketing",
+            "creator brief"
+          ]
+        },
+        "marketing_strategy": {
+          "what": "Annual/multi-year marketing plan — strategic shift, channel mix, budget, team structure, targets.",
+          "audience": "CEO, board, CFO, exec team.",
+          "triggers": [
+            "marketing strategy",
+            "marketing plan",
+            "marketing presentation",
+            "annual marketing plan",
+            "marketing budget",
+            "marketing roadmap"
+          ],
+          "not_this": "If about one campaign → campaign_presentation. If about business strategy broadly → strategy_presentation (strategy). If about GTM → go_to_market_strategy (strategy).",
+          "similar": [
+            "campaign_presentation",
+            "go_to_market_strategy",
+            "strategy_presentation"
+          ]
+        },
+        "media_kit": {
+          "what": "Sales document for advertisers/sponsors — audience profile, formats, pricing, social proof.",
+          "audience": "Advertising directors, media buyers, brand partnership managers.",
+          "triggers": [
+            "media kit",
+            "press kit",
+            "advertiser deck",
+            "sponsorship kit",
+            "advertiser presentation",
+            "rate card"
+          ]
+        },
+        "pr_communications_strategy": {
+          "what": "Communications plan for a major announcement — narrative, outlets, message hierarchy, spokesperson, timeline.",
+          "audience": "CEO, CMO, founding team.",
+          "triggers": [
+            "pr strategy",
+            "communications strategy",
+            "press strategy",
+            "comms plan",
+            "media relations",
+            "press release plan",
+            "announcement strategy"
+          ],
+          "not_this": "If about internal communications to employees → all_hands_meeting or executive_briefing (operations). If about brand identity → brand_presentation."
+        },
+        "product_launch_deck": {
+          "what": "Internal go-to-launch plan — launch strategy, channel plan, enablement, targets.",
+          "audience": "CEO, CMO, VP Sales, VP Product.",
+          "triggers": [
+            "product launch",
+            "launch deck",
+            "go-to-launch",
+            "launch plan",
+            "feature launch",
+            "launching a product",
+            "launch strategy"
+          ],
+          "not_this": "If about the product roadmap → product_roadmap (strategy). If about the GTM strategy → go_to_market_strategy (strategy). If about marketing strategy broadly → marketing_strategy.",
+          "similar": [
+            "product_roadmap",
+            "go_to_market_strategy"
+          ]
+        }
+      }
+    },
+    "sales_marketing/sales": {
+      "label": "Sales",
+      "when": "Selling to or managing external customers. Winning deals, demos, proposals, renewals, enablement, QBRs with clients, case studies. Job titles like Account Executive, Customer Success, Sales Director, Head of Sales signal this category.",
+      "not": "Marketing campaigns (→ marketing), internal reporting (→ operations_reporting), raising money from investors (→ investment_finance). Customer-facing proposals are sales, not operations.",
+      "types": {
+        "case_study_presentation": {
+          "what": "Customer success story for buyers — credibility in competitive evaluation with comparable results.",
+          "audience": "CISO, technical evaluators, procurement, C-suite in active evaluation.",
+          "triggers": [
+            "case study",
+            "customer story",
+            "success story",
+            "customer case study",
+            "client success",
+            "customer results"
+          ],
+          "not_this": "If about internal post-mortem → post_mortem (operations)."
+        },
+        "competitive_battle_card": {
+          "what": "Internal sales enablement — positioning, objection handling, tactics to win against a specific competitor.",
+          "audience": "Sales team: AEs, SDRs, sales management.",
+          "triggers": [
+            "battlecard",
+            "battle card",
+            "competitive battlecard",
+            "win against competitor",
+            "beat competitor",
+            "how to win against"
+          ],
+          "not_this": "If strategic competitive landscape analysis → competitive_analysis (strategy).",
+          "similar": [
+            "competitive_analysis"
+          ]
+        },
+        "customer_qbr": {
+          "what": "Review meeting WITH existing customer — value delivered, gaps, next-quarter priorities, renewal/expansion.",
+          "audience": "VP Operations, Head of HR, or equivalent customer-side decision-maker.",
+          "triggers": [
+            "customer qbr",
+            "client review",
+            "customer quarterly review",
+            "account review",
+            "client qbr",
+            "customer business review"
+          ],
+          "not_this": "If internal financial QBR → quarterly_business_review_internal (investment_finance). If vendor we're reviewing → vendor_review (operations).",
+          "similar": [
+            "quarterly_business_review_internal",
+            "renewal_upsell"
+          ]
+        },
+        "discovery_needs_analysis": {
+          "what": "Discovery/qualification call deck — frame conversation, confirm prospect's situation, qualify opportunity.",
+          "audience": "CISO, VP Engineering, CTO in early buying stages.",
+          "triggers": [
+            "discovery deck",
+            "discovery call",
+            "needs analysis",
+            "qualification deck",
+            "discovery meeting",
+            "first meeting with prospect"
+          ]
+        },
+        "executive_sponsorship": {
+          "what": "Targeted C-suite pitch to establish executive sponsorship for a stalled deal.",
+          "audience": "CFO, CEO, COO — brought in by champion.",
+          "triggers": [
+            "executive sponsorship",
+            "exec sponsor",
+            "c-suite pitch",
+            "stalled deal",
+            "get executive buy-in",
+            "executive champion"
+          ],
+          "not_this": "If general sales pitch → sales_pitch_deck. If internal budget ask → business_case_proposal (strategy).",
+          "similar": [
+            "sales_pitch_deck",
+            "business_case_proposal"
+          ]
+        },
+        "product_demo": {
+          "what": "Demo session combining deck with live product walkthrough — solving specific buyer pain points.",
+          "audience": "Operational decision-maker actively evaluating solutions.",
+          "triggers": [
+            "product demo",
+            "demo presentation",
+            "demo deck",
+            "live demo",
+            "software demo",
+            "show the product",
+            "demo for customer"
+          ],
+          "not_this": "If about the product roadmap internally → product_roadmap (strategy)."
+        },
+        "proposal_presentation": {
+          "what": "Formal commercial proposal — problem, solution, expected return, clear ask.",
+          "audience": "C-suite and operational leadership comparing vendors.",
+          "triggers": [
+            "sales proposal",
+            "proposal deck",
+            "commercial proposal",
+            "proposal presentation",
+            "formal proposal",
+            "proposal for client"
+          ],
+          "not_this": "If responding to a formal RFP → rfp_response (operations). If internal budget request → business_case_proposal (strategy). If internal investment → budget_proposal (investment).",
+          "similar": [
+            "rfp_response",
+            "business_case_proposal"
+          ]
+        },
+        "renewal_upsell": {
+          "what": "Contract renewal conversation — value delivered, renewal commitment, expansion with additional product/seats.",
+          "audience": "VP People, VP Operations — contract owner.",
+          "triggers": [
+            "renewal pitch",
+            "upsell deck",
+            "renewal presentation",
+            "expansion pitch",
+            "contract renewal",
+            "renew and expand",
+            "upsell presentation"
+          ],
+          "not_this": "If reviewing customer relationship (not renewing) → customer_qbr.",
+          "similar": [
+            "customer_qbr"
+          ]
+        },
+        "sales_enablement": {
+          "what": "Internal presentation proposing or reviewing a sales enablement programme — ROI, design, budget.",
+          "audience": "CRO, VP Sales, CFO.",
+          "triggers": [
+            "sales enablement",
+            "sales training",
+            "enablement program",
+            "sales playbook",
+            "sales onboarding",
+            "train the sales team"
+          ],
+          "not_this": "If training new employees broadly → onboarding_deck (people). If battle card for one competitor → competitive_battle_card.",
+          "similar": [
+            "competitive_battle_card",
+            "onboarding_deck"
+          ]
+        },
+        "sales_pitch_deck": {
+          "what": "Buyer-facing company story — problem, solution, case for purchase.",
+          "audience": "VP Operations, VP CX, mid-market decision-makers.",
+          "triggers": [
+            "sales pitch",
+            "sales deck",
+            "pitch to customer",
+            "client pitch",
+            "buyer deck",
+            "sell our product",
+            "pitch to enterprise"
+          ],
+          "not_this": "If pitching to investors → fundraising_roadshow or series_a_deck (investment_finance). If agency pitching for a client → agency_pitch (marketing).",
+          "similar": [
+            "fundraising_roadshow",
+            "agency_pitch"
+          ]
+        }
+      }
+    },
+    "educational/academic": {
+      "label": "Educational & Academic",
+      "when": "Academic presentations, research projects, university coursework, thesis defenses, conference talks, technical deep-dives on ML/AI/data science, scientific findings, capstone projects, or any educational/teaching material. Audience is professors, classmates, conference attendees, or academic reviewers.",
+      "not": "Product pitches to customers (→ sales), internal company strategy (→ strategy_planning), marketing campaigns (→ marketing). A company presenting ML internally is operations or strategy, not educational.",
+      "types": {
+        "ml_project_presentation": {
+          "what": "Machine learning or data science project presentation — methodology, model architecture, results, evaluation metrics, findings.",
+          "audience": "Professors, academic reviewers, classmates, conference attendees.",
+          "triggers": [
+            "ml project",
+            "machine learning presentation",
+            "data science project",
+            "model results",
+            "ml pipeline",
+            "deep learning project",
+            "neural network presentation",
+            "ai project presentation"
+          ],
+          "not_this": "If pitching an ML product to customers → sales_pitch_deck (sales). If internal ML strategy → strategy_presentation (strategy).",
+          "similar": [
+            "research_presentation",
+            "capstone_presentation"
+          ]
+        },
+        "research_presentation": {
+          "what": "Academic research findings — literature review, methodology, results, discussion, future work.",
+          "audience": "Conference attendees, thesis committee, peer reviewers, research group.",
+          "triggers": [
+            "research presentation",
+            "thesis defense",
+            "dissertation",
+            "research findings",
+            "academic paper presentation",
+            "conference talk",
+            "journal presentation",
+            "literature review"
+          ],
+          "not_this": "If about a product → product_roadmap (strategy). If competitive market research → competitive_analysis (strategy).",
+          "similar": [
+            "ml_project_presentation",
+            "capstone_presentation"
+          ]
+        },
+        "capstone_presentation": {
+          "what": "University capstone or final project — problem statement, approach, implementation, demo, results.",
+          "audience": "Faculty panel, classmates, industry sponsors.",
+          "triggers": [
+            "capstone project",
+            "final project",
+            "senior project",
+            "course project",
+            "semester project",
+            "university project",
+            "school project",
+            "class presentation"
+          ],
+          "not_this": "If a startup pitch → investor_pitch_seed_deck (investment_finance).",
+          "similar": [
+            "ml_project_presentation",
+            "research_presentation"
+          ]
+        },
+        "lecture_tutorial": {
+          "what": "Teaching or tutorial presentation — concept explanation, step-by-step walkthrough, educational content.",
+          "audience": "Students, workshop attendees, learners.",
+          "triggers": [
+            "lecture slides",
+            "tutorial",
+            "teach",
+            "explain concept",
+            "educational presentation",
+            "workshop slides",
+            "training presentation",
+            "lesson plan"
+          ],
+          "not_this": "If sales training → sales_enablement (sales). If employee onboarding → onboarding_deck (people_culture).",
+          "similar": [
+            "research_presentation"
+          ]
+        },
+        "technical_deep_dive": {
+          "what": "In-depth technical presentation — architecture, algorithms, benchmarks, implementation details.",
+          "audience": "Engineers, researchers, technical reviewers, tech conference attendees.",
+          "triggers": [
+            "technical deep dive",
+            "tech talk",
+            "architecture presentation",
+            "algorithm explanation",
+            "system design presentation",
+            "technical overview",
+            "engineering presentation"
+          ],
+          "not_this": "If product demo for customers → product_demo (sales). If internal sprint review → project_status_update (operations).",
+          "similar": [
+            "ml_project_presentation",
+            "research_presentation"
+          ]
+        },
+        "topic_explainer": {
+          "what": "General topic explainer or informational presentation — explain a subject, concept, phenomenon, or trend to a broad audience.",
+          "audience": "General audience, students, stakeholders wanting to understand a topic.",
+          "triggers": [
+            "presentation about",
+            "explain",
+            "overview of",
+            "introduction to",
+            "what is",
+            "how does",
+            "topic presentation",
+            "informational presentation",
+            "explainer",
+            "knowledge sharing"
+          ],
+          "not_this": "If about a company's product → sales_pitch_deck (sales). If internal strategy → strategy_presentation (strategy). If formal academic research → research_presentation.",
+          "similar": [
+            "lecture_tutorial",
+            "research_presentation"
+          ]
+        }
+      }
+    }
+  },
+  "fallback": {
+    "category": "general-deck",
+    "skill": "general-deck",
+    "when": "Generic company overviews, topic explainers, or requests that genuinely don't fit any specific category. Most requests DO fit a specific category — only use this as a last resort."
+  },
+  "disambiguation": [
+    {
+      "prompt_pattern": "series a/b/c + selling product",
+      "wrong": "investment_finance",
+      "right": "sales_marketing/sales",
+      "reason": "Company stage ≠ presentation purpose. 'Series A company' ≠ 'Series A deck'."
+    },
+    {
+      "prompt_pattern": "qbr/quarterly review",
+      "wrong": "investment_finance",
+      "right": "depends",
+      "reason": "Internal QBR → quarterly_business_review_internal. WITH customer → customer_qbr (sales)."
+    },
+    {
+      "prompt_pattern": "product launch",
+      "wrong": "strategy_planning",
+      "right": "sales_marketing/marketing",
+      "reason": "Launch execution is marketing. Product roadmap planning is strategy."
+    },
+    {
+      "prompt_pattern": "brand + recruiting/hiring",
+      "wrong": "sales_marketing/marketing",
+      "right": "business_corporate/people_culture",
+      "reason": "Employer branding is people/culture. Product/visual brand is marketing."
+    },
+    {
+      "prompt_pattern": "proposal + internal budget",
+      "wrong": "sales_marketing/sales",
+      "right": "business_corporate/strategy_planning",
+      "reason": "Sales proposals go to customers. Budget proposals go to internal leadership."
+    },
+    {
+      "prompt_pattern": "competitive + sales deal",
+      "wrong": "business_corporate/strategy_planning",
+      "right": "sales_marketing/sales",
+      "reason": "Strategic competitive analysis vs. tactical battle card for winning a deal."
+    },
+    {
+      "prompt_pattern": "communications + internal",
+      "wrong": "sales_marketing/marketing",
+      "right": "business_corporate/operations_reporting",
+      "reason": "PR/comms strategy is marketing. Internal comms is operations."
+    },
+    {
+      "prompt_pattern": "pitch deck + startup + investors",
+      "wrong": "general-deck",
+      "right": "business_corporate/investment_finance",
+      "reason": "Startup fundraising pitches are investment_finance, not the generic fallback."
+    },
+    {
+      "prompt_pattern": "analyze/analyse competitors",
+      "wrong": "general-deck",
+      "right": "business_corporate/strategy_planning",
+      "reason": "Competitive analysis is strategy_planning/competitive_analysis, not a generic deck."
+    },
+    {
+      "prompt_pattern": "convince CFO/CEO + internal project",
+      "wrong": "investment_finance",
+      "right": "business_corporate/strategy_planning",
+      "reason": "Internal budget asks are business_case_proposal, not investor pitches."
+    },
+    {
+      "prompt_pattern": "demo + product",
+      "wrong": "general-deck",
+      "right": "sales_marketing/sales",
+      "reason": "Product demos are sales/product_demo, not generic decks."
+    },
+    {
+      "prompt_pattern": "training + sales team",
+      "wrong": "people_culture",
+      "right": "sales_marketing/sales",
+      "reason": "Sales-specific training is sales_enablement, not general onboarding."
+    },
+    {
+      "prompt_pattern": "marketing strategy/plan/roadmap",
+      "wrong": "business_corporate/strategy_planning",
+      "right": "sales_marketing/marketing",
+      "reason": "Marketing plans are marketing execution, not corporate strategy. \"Marketing strategy\" = marketing_strategy type."
+    },
+    {
+      "prompt_pattern": "brand presentation/rebrand/brand identity/brand guidelines",
+      "wrong": "business_corporate/people_culture",
+      "right": "sales_marketing/marketing",
+      "reason": "Brand identity is marketing unless explicitly about employer branding for recruiting. Rebrands are marketing."
+    },
+    {
+      "prompt_pattern": "content strategy/content plan/editorial/blog strategy",
+      "wrong": "business_corporate/strategy_planning",
+      "right": "sales_marketing/marketing",
+      "reason": "Content planning is marketing execution, not corporate strategy."
+    },
+    {
+      "prompt_pattern": "customer QBR/client review/account review",
+      "wrong": "general-deck",
+      "right": "sales_marketing/sales",
+      "reason": "QBR with a customer/client is sales. QBR for internal leadership is investment_finance."
+    },
+    {
+      "prompt_pattern": "Account Executive/Customer Success + presenting to customer/prospect",
+      "wrong": "business_corporate/investment_finance",
+      "right": "sales_marketing/sales",
+      "reason": "AEs and CSMs sell to customers. Their role signals sales, not finance."
+    },
+    {
+      "prompt_pattern": "PR/press/communications/media outreach",
+      "wrong": "business_corporate/operations_reporting",
+      "right": "sales_marketing/marketing",
+      "reason": "PR and press strategy targets external audiences = marketing. Only internal comms = operations."
+    },
+    {
+      "prompt_pattern": "sponsorship/sponsor an event/partnership proposal to external party",
+      "wrong": "business_corporate/strategy_planning",
+      "right": "sales_marketing/marketing",
+      "reason": "Sponsorship asks and external partnership proposals are marketing, not internal strategy."
+    },
+    {
+      "prompt_pattern": "product launch/launching/feature launch/go to market launch",
+      "wrong": "general-deck",
+      "right": "sales_marketing/marketing",
+      "reason": "Launches are marketing execution. Even vague \"launching something new\" is marketing."
+    },
+    {
+      "prompt_pattern": "sales enablement/train sales team/sales playbook",
+      "wrong": "business_corporate/operations_reporting",
+      "right": "sales_marketing/sales",
+      "reason": "Sales team training materials are sales enablement, not operations."
+    },
+    {
+      "prompt_pattern": "renewal/upsell/expand deal/contract renewal",
+      "wrong": "general-deck",
+      "right": "sales_marketing/sales",
+      "reason": "Renewals and upsells are customer-facing sales activities."
+    },
+    {
+      "prompt_pattern": "discovery call/first meeting with prospect/qualification",
+      "wrong": "general-deck",
+      "right": "sales_marketing/sales",
+      "reason": "Discovery calls are early-stage sales activities."
+    },
+    {
+      "prompt_pattern": "influencer/creator partnership/brand partnership",
+      "wrong": "business_corporate/people_culture",
+      "right": "sales_marketing/marketing",
+      "reason": "Influencer and creator partnerships are marketing, not people/culture."
+    },
+    {
+      "prompt_pattern": "media kit/press kit/advertiser deck",
+      "wrong": "business_corporate/operations_reporting",
+      "right": "sales_marketing/marketing",
+      "reason": "Press/media kits target external audiences = marketing."
+    },
+    {
+      "prompt_pattern": "case study/customer story/success story + competitive deal",
+      "wrong": "business_corporate/investment_finance",
+      "right": "sales_marketing/sales",
+      "reason": "Customer case studies used in deals are sales tools, not finance."
+    },
+    {
+      "prompt_pattern": "campaign/ad campaign/campaign brief",
+      "wrong": "general-deck",
+      "right": "sales_marketing/marketing",
+      "reason": "Marketing campaigns are marketing execution, never generic general-deck."
+    },
+    {
+      "prompt_pattern": "ML project/thesis/research paper/capstone/class presentation",
+      "wrong": "general-deck",
+      "right": "educational/academic",
+      "reason": "Academic and research presentations belong in educational/academic, not the generic fallback."
+    },
+    {
+      "prompt_pattern": "tech talk/conference presentation/technical deep dive",
+      "wrong": "business_corporate/operations_reporting",
+      "right": "educational/academic",
+      "reason": "Technical talks and conference presentations are educational, not internal ops updates."
+    },
+    {
+      "prompt_pattern": "lecture/tutorial/workshop slides/teaching",
+      "wrong": "general-deck",
+      "right": "educational/academic",
+      "reason": "Teaching and tutorial content is educational/academic, not a generic deck."
+    },
+    {
+      "prompt_pattern": "presentation about X/explain X/overview of X/introduction to X/what is X",
+      "wrong": "general-deck",
+      "right": "educational/academic",
+      "reason": "Topic explainers and informational presentations are educational/academic (topic_explainer type), not generic fallback."
+    }
+  ]
+}

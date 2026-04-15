@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String   @id @db.Uuid
+  email          String?
+  fullName       String?  @map("full_name")
+  avatarUrl      String?  @map("avatar_url")
+  avatarPath     String?  @map("avatar_path")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @map("updated_at")
+
+  sessions        Session[]
+  brandConfigs    BrandConfig[]
+  userConnections UserConnection[]
+  apiKeys         ApiKey[]
+
+  @@map("users")
+}
+
+model BrandConfig {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  name            String   @default("Company Template")
+  brandJson       Json     @default("{}") @map("brand_json")
+  brandConfigJson Json     @default("{}") @map("brand_config_json")
+  strictness      String   @default("balanced")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("brand_configs")
+}
+
+model Session {
+  id            String    @id
+  title         String    @default("Untitled Presentation")
+  type          String    @default("slides")
+  logoUrl       String?   @map("logo_url")
+  theme         String?
+  themeColors   Json?     @map("theme_colors")
+  isPublic      Boolean   @default(false) @map("is_public")
+  isReplay      Boolean   @default(false) @map("is_replay")
+  messages      Json      @default("[]")
+  toolHistory   Json      @default("[]") @map("tool_history")
+  attachments   Json      @default("[]")
+  slideCategory            String?   @map("slide_category")
+  presentationType         String?   @map("presentation_type")
+  classificationConfidence String?   @map("classification_confidence")
+  classificationMethod     String?   @map("classification_method")
+  classifiedAt             DateTime? @map("classified_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @default(now()) @map("updated_at")
+  lastOpenedAt  DateTime? @map("last_opened_at")
+  userId        String?   @map("user_id") @db.Uuid
+
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  slides  Slide[]
+  outline Outline?
+  templates Template[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([type])
+  @@map("sessions")
+}
+
+model Slide {
+  id        String  @id
+  index     Int
+  title     String
+  content   String  @db.Text
+  layout    String  @default("content")
+  theme     String?
+  notes     String?
+
+  sessionId String  @map("session_id")
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("slides")
+}
+
+model Outline {
+  id                String  @id
+  presentationTitle String  @map("presentation_title")
+  slides            Json
+
+  sessionId String  @unique @map("session_id")
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("outlines")
+}
+
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String    @map("user_id") @db.Uuid
+  name       String    @default("Default")
+  keyHash    String    @unique @map("key_hash")
+  prefix     String
+  lastUsedAt DateTime? @map("last_used_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model UserConnection {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id") @db.Uuid
+  provider     String
+  accessToken  String    @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+  scopes       String[]
+  metadata     Json?
+  status       String    @default("active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("user_connections")
+}
+
+model Template {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String   @unique
+  title       String
+  description String?  @db.Text
+  category    String
+  tags        String[] @default([])
+  bg          String
+  prompt      String   @db.Text
+  sessionId   String?  @map("session_id")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, sortOrder])
+  @@map("templates")
+}

@@ -1,0 +1,536 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Surfaces — dark theme */
+  --bg:            #0F0F0F;
+  --app-bg:        #0A0A0A;
+  --bg2:           #1A1A1A;
+  --surface:       #141012;
+
+  /* Borders — subtle on dark */
+  --border:        rgba(255, 255, 255, 0.08);
+  --border-hover:  rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.22);
+
+  /* Text — light on dark */
+  --text:          #F0F0F0;
+  --text2:         #A0A0A8;
+  --text3:         #6B6B75;
+
+  /* Accent — warm rose to complement the tree */
+  --accent:        #C2185B;
+  --accent-hover:  #AD1457;
+  --accent-soft:   rgba(194, 24, 91, 0.12);
+  --accent-text:   #E91E78;
+
+  /* Semantic */
+  --green:         #22C55E;
+  --green-soft:    rgba(34, 197, 94, 0.12);
+  --red:           #EF4444;
+  --red-soft:      rgba(239, 68, 68, 0.12);
+  --blue:          #3B82F6;
+  --blue-soft:     rgba(59, 130, 246, 0.12);
+  --warn:          #F59E0B;
+  --warn-soft:     rgba(245, 158, 11, 0.12);
+
+  /* Radius */
+  --r-sm:  6px;
+  --r-md:  8px;
+  --r-lg:  12px;
+  --r-xl:  14px;
+  --r-2xl: 16px;
+
+  /* Sarvam-inspired easing */
+  --ease-reveal: cubic-bezier(0.25, 1, 0.5, 1);
+
+  /* shadcn-style HSL channel tokens — used by /components/ui/sign-in.tsx
+     Values are HSL channel triplets so Tailwind's `hsl(var(--x) / <alpha-value>)`
+     pattern can apply opacity modifiers like bg-foreground/5, text-foreground/80. */
+  --background:            0 0% 6%;        /* #0F0F0F — matches --bg */
+  --foreground:            0 0% 94%;       /* #F0F0F0 — matches --text */
+  --card:                  0 0% 10%;       /* #1A1A1A — matches --bg2 */
+  --card-foreground:       0 0% 94%;
+  --primary:               333 77% 43%;    /* #C2185B — matches --accent */
+  --primary-foreground:    0 0% 100%;      /* #FFFFFF */
+  --secondary:             0 0% 10%;       /* #1A1A1A */
+  --secondary-foreground:  0 0% 94%;
+  --muted:                 0 0% 10%;
+  --muted-foreground:      240 5% 66%;     /* ≈ #A5A5AC */
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--app-bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+}
+
+/* Crisp SVG icons — pixel-snap strokes, no anti-alias blur */
+svg {
+  shape-rendering: geometricPrecision;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* Focus ring — skip text inputs which handle their own focus styles */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none !important;
+  outline-width: 0 !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+}
+
+/* Link reset */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Button reset */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+}
+
+/* Textarea reset */
+textarea {
+  resize: none;
+  font: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+/* Transition utilities */
+.transition-base {
+  transition: all 150ms ease;
+}
+
+.transition-smooth {
+  transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.transition-premium {
+  transition: all 250ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Slide canvas styles */
+.slide-canvas {
+  background: white;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Streaming cursor */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.streaming-cursor::after {
+  content: "▋";
+  animation: blink 1s infinite;
+  color: var(--accent);
+  font-size: 0.85em;
+  margin-left: 1px;
+}
+
+/* Prompt input focus animation */
+@keyframes float-up {
+  0%   { transform: translate(-50%, 100vh) scaleX(1) scaleY(1); }
+  50%  { transform: translate(-50%, 0) scaleX(0.5) scaleY(0.85); }
+  100% { transform: translate(-50%, -100vh) scaleX(0.5) scaleY(0.85); }
+}
+.animate-float-up {
+  animation: float-up 1.1s ease-in forwards;
+}
+@keyframes followpath-left {
+  to { offset-distance: 100%; }
+}
+@keyframes followpath-right {
+  to { offset-distance: 100%; }
+}
+@keyframes pulse-fade {
+  0%   { opacity: 0; }
+  10%  { opacity: 0.7; }
+  70%  { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+/* Tool call indicator animation */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.tool-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.tool-dot:nth-child(2) { animation-delay: 0.2s; }
+.tool-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* Deep Research pill toggle */
+.deep-research-pill {
+  color: var(--text3);
+  background: transparent;
+  border: 1px solid var(--border);
+  transition: color 0.08s, border-color 0.08s, background 0.08s;
+}
+.deep-research-pill:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.deep-research-pill:active { transform: scale(0.95); }
+.deep-research-pill.active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.deep-research-pill.active:hover {
+  color: var(--bg);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Footer gradient ambient glow */
+@keyframes footer-gradient-shift {
+  0%   { opacity: 0.6; transform: scale(1) translateY(0); }
+  50%  { opacity: 0.8; transform: scale(1.05) translateY(-2%); }
+  100% { opacity: 0.6; transform: scale(1) translateY(0); }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Sign-in page (src/components/ui/sign-in.tsx)
+   Blurred-fade entry animations, staggered delay utilities,
+   custom checkbox skin.
+   ─────────────────────────────────────────────────────────────── */
+
+@keyframes fadeSlideIn {
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0px);
+  }
+}
+
+@keyframes slideRightIn {
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateX(0px);
+  }
+}
+
+@keyframes testimonialIn {
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.animate-element {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(12px);
+  animation: fadeSlideIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-slide-right {
+  opacity: 0;
+  filter: blur(16px);
+  transform: translateX(32px);
+  animation: slideRightIn 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-testimonial {
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(16px) scale(0.96);
+  animation: testimonialIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-delay-100  { animation-delay: 0.10s; }
+.animate-delay-200  { animation-delay: 0.20s; }
+.animate-delay-300  { animation-delay: 0.30s; }
+.animate-delay-400  { animation-delay: 0.40s; }
+.animate-delay-500  { animation-delay: 0.50s; }
+.animate-delay-600  { animation-delay: 0.60s; }
+.animate-delay-700  { animation-delay: 0.70s; }
+.animate-delay-800  { animation-delay: 0.80s; }
+.animate-delay-900  { animation-delay: 0.90s; }
+.animate-delay-1000 { animation-delay: 1.00s; }
+.animate-delay-1200 { animation-delay: 1.20s; }
+.animate-delay-1400 { animation-delay: 1.40s; }
+
+/* Auth window shell — wraps SignInPage in a centered 80% "window" on desktop,
+   full-screen on mobile. The `> div` override neutralizes SignInPage's hardcoded
+   h-[100dvh] / w-[100dvw] so its content fills the shell instead of the viewport. */
+.auth-window-shell {
+  width: 100vw;
+  height: 100dvh;
+  border-radius: 0;
+  max-width: 100vw;
+  max-height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (min-width: 768px) {
+  .auth-window-shell {
+    width: 72vw;
+    height: 72dvh;
+    max-width: 1260px;
+    max-height: 810px;
+    border-radius: 20px;
+  }
+}
+
+/* Mobile: allow content to grow past the shell height and scroll naturally. */
+.auth-window-shell > div {
+  min-height: 100% !important;
+  height: auto !important;
+  width: 100% !important;
+}
+
+/* Desktop: lock to shell height so the split layout fills the window cleanly. */
+@media (min-width: 768px) {
+  .auth-window-shell > div {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   Footer responsive grid (src/components/layout/Footer.tsx)
+   Stacks from 5-column desktop → 2-column tablet → 1-column phone.
+   ─────────────────────────────────────────────────────────────── */
+
+.footer-outer {
+  padding: 32px 48px 0;
+}
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 1fr 1fr 1.3fr;
+  gap: 40px;
+  padding-bottom: 28px;
+}
+.footer-copyright {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0 6px;
+  gap: 12px;
+}
+.footer-textmark {
+  text-align: center;
+  padding: 0;
+  margin-top: -40px;
+  position: relative;
+  z-index: 2;
+  height: 260px;
+}
+
+@media (max-width: 900px) {
+  .footer-outer {
+    padding: 28px 28px 0;
+  }
+  .footer-grid {
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 32px 24px;
+  }
+  /* Brand column spans all 4 columns at the top; Product/Company/Legal/Contact fill row 2 */
+  .footer-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .footer-outer {
+    padding: 24px 20px 0;
+  }
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px 20px;
+    padding-bottom: 20px;
+  }
+  .footer-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+  .footer-copyright {
+    flex-direction: column;
+    gap: 4px;
+    text-align: center;
+    padding: 14px 0 8px;
+  }
+  .footer-textmark {
+    margin-top: -10px;
+    height: 110px;
+  }
+}
+
+@media (max-width: 400px) {
+  .footer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Wordmark SVG text overflows the 300-unit-wide viewBox at the default text-7xl
+   (72 user units) below ~768px because "OpenSlide" is ~395 units wide. Override
+   the font-size at smaller viewports so the text fits inside the SVG bounds. */
+@media (max-width: 900px) {
+  .footer-textmark svg text {
+    font-size: 56px !important;
+  }
+}
+@media (max-width: 480px) {
+  .footer-textmark svg text {
+    font-size: 48px !important;
+  }
+}
+
+/* Skinned checkbox used in the sign-in form */
+.custom-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  flex-shrink: 0;
+}
+.custom-checkbox:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.custom-checkbox:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.custom-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ─── Doc toolbar tooltips (below button, with caret) ────────────────────── */
+[data-doc-tip] {
+  position: relative;
+}
+[data-doc-tip]::after {
+  content: attr(data-doc-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-2px);
+  background: #262626;
+  color: #f5f5f5;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease, transform 100ms ease;
+  z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+}
+[data-doc-tip]::before {
+  content: "";
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%) translateY(-2px);
+  border: 6px solid transparent;
+  border-bottom-color: #262626;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease, transform 100ms ease;
+  z-index: 200;
+}
+[data-doc-tip]:hover::after,
+[data-doc-tip]:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+/* Right-aligned variant for buttons near the right edge */
+[data-doc-tip-right]::after {
+  left: auto;
+  right: 0;
+  transform: translateX(0) translateY(-2px);
+}
+[data-doc-tip-right]::before {
+  left: auto;
+  right: 10px;
+  transform: translateX(0) translateY(-2px);
+}
+[data-doc-tip-right]:hover::after,
+[data-doc-tip-right]:hover::before {
+  transform: translateX(0) translateY(0);
+}
