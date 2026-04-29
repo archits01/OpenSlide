@@ -2,11 +2,11 @@ import { LegalLayout, Section, P, SubHeading, UL, Li, Note } from "@/components/
 
 export default function TermsPage() {
   return (
-    <LegalLayout title="Terms of Service" lastUpdated="April 15, 2026">
+    <LegalLayout title="Terms of Service" lastUpdated="April 30, 2026">
 
       <Section title="1. Introduction and Acceptance">
         <P>
-          These Terms of Service ("Terms") constitute a legally binding agreement between you ("User," "you," or "your") and Open Computer ("Open Computer," "we," "us," or "our"), the operator of the OpenSlide platform available at tryopenslide.com (the "Site") and all related AI-powered presentation and document builder services (collectively, the "Services").
+          These Terms of Service ("Terms") constitute a legally binding agreement between you ("User," "you," or "your") and Open Computer ("Open Computer," "we," "us," or "our"), the operator of the OpenSlide platform available at tryopenslide.com (the "Site") and all related AI-powered services for generating presentations, documents, spreadsheets, websites, applications, and other work product (collectively, the "Services").
         </P>
         <P>
           By accessing or using the Services, creating an account, or clicking any button indicating acceptance, you acknowledge that you have read, understood, and agree to be bound by these Terms in their entirety. If you do not agree, you must not access or use the Services.
@@ -46,7 +46,7 @@ export default function TermsPage() {
 
       <Section title="4. License to Use the Services">
         <P>
-          Subject to your compliance with these Terms, we grant you a limited, personal, non-exclusive, non-transferable, revocable license to access and use the Services for creating, editing, and sharing presentations and documents for personal or commercial purposes, consistent with your plan.
+          Subject to your compliance with these Terms, we grant you a limited, personal, non-exclusive, non-transferable, revocable license to access and use the Services for creating, editing, and sharing presentations, documents, spreadsheets, websites, applications, and other AI-generated work product for personal or commercial purposes, consistent with your plan.
         </P>
         <P>
           This license does not include the right to: sublicense, sell, resell, or commercially exploit the Services beyond your own use; modify, copy, or create derivative works of the Services; reverse engineer or attempt to extract source code from the platform; use any automated means to access or scrape the Services beyond normal usage; or frame or mirror the Services on any other website.
@@ -99,7 +99,7 @@ export default function TermsPage() {
 
         <SubHeading>Your Rights</SubHeading>
         <P>
-          You retain all right, title, and interest in and to the content you create, upload, or generate through the Services, including presentations, documents, and prompts ("User Content"), subject to the license granted below and any applicable third-party rights.
+          You retain all right, title, and interest in and to the content you create, upload, or generate through the Services, including presentations, documents, spreadsheets, websites, applications, project files, and prompts ("User Content"), subject to the license granted below and any applicable third-party rights.
         </P>
       </Section>
 
@@ -128,7 +128,7 @@ export default function TermsPage() {
 
       <Section title="8. Third-Party Integrations">
         <P>
-          The Services may offer integrations with third-party platforms such as Google Drive and others made available through our platform. These integrations are subject to the following:
+          The Services may offer integrations with third-party platforms such as Google Drive, GitHub, Vercel, and others made available through our platform. These integrations are subject to the following:
         </P>
         <UL>
           <Li>Third-party integrations are governed by the respective third-party's terms of service and privacy policies</Li>

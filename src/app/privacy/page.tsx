@@ -2,7 +2,7 @@ import { LegalLayout, Section, P, SubHeading, UL, Li, Note } from "@/components/
 
 export default function PrivacyPage() {
   return (
-    <LegalLayout title="Privacy Policy" lastUpdated="April 15, 2026">
+    <LegalLayout title="Privacy Policy" lastUpdated="April 30, 2026">
 
       <Section title="1. Introduction">
         <P>
@@ -41,7 +41,12 @@ export default function PrivacyPage() {
 
         <SubHeading>User Content</SubHeading>
         <P>
-          We collect and store the presentations, documents, prompts, and files you create or upload through the Services. See Section 6 for details on how this content may be used.
+          We collect and store the presentations, documents, spreadsheets, websites, applications, project files, prompts, and other content you create or upload through the Services. See Section 6 for details on how this content may be used.
+        </P>
+
+        <SubHeading>Website and App Project Data</SubHeading>
+        <P>
+          When you build a website or application through the Services, we additionally store the project's source files, environment variables (encrypted at rest using AES-256-GCM), preview screenshots, and project snapshots in our object storage so the project can be resumed and exported. Some user-submitted image URLs are also proxied through our storage to provide stable, cached references.
         </P>
 
         <SubHeading>Third-Party Integration Data</SubHeading>
@@ -71,7 +76,7 @@ export default function PrivacyPage() {
         <UL>
           <Li>Create and manage your account</Li>
           <Li>Process credit purchases and maintain your credit balance</Li>
-          <Li>Generate AI-powered presentations and documents based on your prompts</Li>
+          <Li>Generate AI-powered presentations, documents, spreadsheets, websites, and applications based on your prompts</Li>
           <Li>Enable third-party integrations you authorize</Li>
           <Li>Deliver and maintain platform functionality</Li>
         </UL>
@@ -130,7 +135,7 @@ export default function PrivacyPage() {
 
         <SubHeading>Service Providers</SubHeading>
         <P>
-          We share data with trusted service providers who assist in operating our platform, including authentication (Supabase), database and infrastructure hosting, and payment processing. All service providers are bound by data processing agreements and are prohibited from using your data for their own purposes.
+          We share data with trusted service providers who assist in operating our platform, including authentication and database hosting (Supabase), infrastructure hosting, payment processing, image search (SearchAPI), AI image generation (fal.ai), source-control and deployment integrations (GitHub, Vercel), and our standalone document export service for PDF, PPTX, and XLSX file generation. All service providers are bound by data processing agreements and are prohibited from using your data for their own purposes.
         </P>
 
         <SubHeading>Legal Requirements</SubHeading>
@@ -150,7 +155,7 @@ export default function PrivacyPage() {
         </P>
         <UL>
           <Li>Account and profile data is retained for the duration of your account</Li>
-          <Li>User Content (presentations, documents) is retained until you delete it or close your account</Li>
+          <Li>User Content (presentations, documents, spreadsheets, websites, applications, and associated project files) is retained until you delete it or close your account</Li>
           <Li>Usage and technical data is retained for up to 12 months for operational purposes</Li>
           <Li>Payment records are retained as required by applicable law (typically 7 years)</Li>
         </UL>

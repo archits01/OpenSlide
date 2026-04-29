@@ -7,32 +7,26 @@ const TIPS = [
   {
     title: "Deploy Your Website",
     description: "Make your site publicly available with managed infrastructure.",
-    video: "https://app.emergent.sh/DeploymentNewUI.mp4",
   },
   {
     title: "Attach Your Assets",
     description: "Upload images and files your agent can access and integrate into your site.",
-    video: "https://assets.emergent.sh/assets/tips&Tricks/Assets.mp4",
   },
   {
     title: "Click to Edit",
     description: "Alt-click any element in the preview to instantly modify it.",
-    video: "https://assets.emergent.sh/assets/tips&Tricks/Fork.mp4",
   },
   {
     title: "Build Mobile Apps",
-    description: "Create native React Native apps with Expo — scan QR to preview on device.",
-    video: "https://assets.emergent.sh/assets/tips&Tricks/Mobile_App.mp4",
+    description: "Create native React Native apps with Expo. Scan the QR to preview on device.",
   },
   {
     title: "AI Self-Review",
     description: "Agent screenshots its own output and fixes visual issues automatically.",
-    video: "https://assets.emergent.sh/assets/tips&Tricks/1M_Claude.mp4",
   },
   {
     title: "Start From a Template",
-    description: "Kick off from React, Expo, or a blank canvas — agent adapts to each.",
-    video: "https://assets.emergent.sh/assets/tips&Tricks/New_Custom_Agent.mp4",
+    description: "Kick off from React, Expo, or a blank canvas. The agent adapts to each.",
   },
 ];
 
@@ -40,15 +34,12 @@ const AUTO_ADVANCE_MS = 5000;
 
 export function BuildingCarousel() {
   const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
   const [direction, setDirection] = useState(1);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const go = useCallback((next: number, dir: number) => {
     setDirection(dir);
     setIndex(next);
-    setPaused(false);
   }, []);
 
   const prev = useCallback(() => {
@@ -61,20 +52,12 @@ export function BuildingCarousel() {
 
   // Auto-advance
   useEffect(() => {
-    if (paused) return;
     timerRef.current = setInterval(() => {
       setDirection(1);
       setIndex((i) => (i + 1) % TIPS.length);
     }, AUTO_ADVANCE_MS);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [paused, index]);
-
-  // Play/pause the video element
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    if (paused) { v.pause(); } else { v.play().catch(() => {}); }
-  }, [paused]);
+  }, [index]);
 
   const tip = TIPS[index];
 
@@ -102,8 +85,8 @@ export function BuildingCarousel() {
           style={{ width: "min(520px, calc(100% - 48px))" }}
         >
           {/* Sparkle icon */}
-          <div style={{ marginBottom: 12 }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <div style={{ marginBottom: 16 }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
               <path
                 d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z"
                 fill="var(--accent)"
@@ -113,11 +96,11 @@ export function BuildingCarousel() {
           </div>
 
           {/* Fixed-height text zone — sized to the tallest tip (2-line description)
-              so the video card never shifts position between slides */}
-          <div style={{ height: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, width: "100%" }}>
+              so dot row stays anchored between slides */}
+          <div style={{ height: 96, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, width: "100%" }}>
             <h2
               style={{
-                fontSize: 22,
+                fontSize: 24,
                 fontWeight: 600,
                 color: "var(--text)",
                 letterSpacing: "-0.03em",
@@ -131,7 +114,7 @@ export function BuildingCarousel() {
 
             <p
               style={{
-                fontSize: 13.5,
+                fontSize: 14,
                 color: "var(--text2)",
                 textAlign: "center",
                 lineHeight: 1.55,
@@ -143,78 +126,13 @@ export function BuildingCarousel() {
               {tip.description}
             </p>
           </div>
-
-          {/* Spacer between text zone and video */}
-          <div style={{ height: 16 }} />
-
-          {/* Video card */}
-          <div
-            style={{
-              width: "100%",
-              borderRadius: 14,
-              overflow: "hidden",
-              position: "relative",
-              background: "#111",
-              boxShadow: "0 8px 40px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)",
-              border: "1px solid rgba(0,0,0,0.08)",
-              aspectRatio: "16/10",
-            }}
-          >
-            <video
-              key={tip.video}
-              ref={videoRef}
-              src={tip.video}
-              autoPlay
-              muted
-              loop
-              playsInline
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", borderRadius: 14 }}
-            />
-            {/* Pause/play button */}
-            <button
-              onClick={() => setPaused((v) => !v)}
-              style={{
-                position: "absolute",
-                bottom: 10,
-                right: 10,
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                background: "rgba(0,0,0,0.55)",
-                border: "none",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                backdropFilter: "blur(4px)",
-                WebkitBackdropFilter: "blur(4px)",
-                color: "#fff",
-                transition: "background 0.12s",
-              }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.75)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.55)"; }}
-            >
-              {paused ? (
-                // Play triangle
-                <svg width="11" height="12" viewBox="0 0 11 12" fill="white">
-                  <path d="M1 1L10 6L1 11V1Z" />
-                </svg>
-              ) : (
-                // Pause bars
-                <svg width="10" height="12" viewBox="0 0 10 12" fill="white">
-                  <rect x="0" y="0" width="3.5" height="12" rx="1" />
-                  <rect x="6.5" y="0" width="3.5" height="12" rx="1" />
-                </svg>
-              )}
-            </button>
-          </div>
         </motion.div>
       </AnimatePresence>
 
       {/* Dots + arrows row */}
       <div
         className="flex items-center gap-3"
-        style={{ marginTop: 22 }}
+        style={{ marginTop: 24 }}
       >
         {/* Left arrow */}
         <button

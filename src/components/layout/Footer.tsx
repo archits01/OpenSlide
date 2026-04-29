@@ -9,7 +9,9 @@ import { TextHoverEffect, FooterBackgroundGradient } from "@/components/layout/H
 const PRODUCT_LINKS = [
   { label: "Explore", href: "/" },
   { label: "Presentations", href: "/presentations" },
+  { label: "Apps", href: "/websites" },
   { label: "Docs", href: "/docs" },
+  { label: "Sheets", href: "/sheets" },
   { label: "Assets", href: "/assets" },
   { label: "Brand Kit", href: "/brand" },
 ];
@@ -269,7 +271,7 @@ export function Footer() {
                 maxWidth: 320,
               }}
             >
-              AI-powered presentations and documents, built in seconds.
+              AI-powered presentations, sheets, docs, and apps. Built by chatting.
             </p>
 
             {/* Social icons — tight cluster below tagline */}

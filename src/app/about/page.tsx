@@ -72,7 +72,7 @@ export default function AboutPage() {
                 maxWidth: 580,
               }}
             >
-              Every founder, operator, and team we know spends hours doing the same thing: taking work that already exists and reformatting it into slides. The data is in your Drive. The story is in your head. But somehow you still lose a Sunday to PowerPoint.
+              Every founder, operator, and team we know spends hours doing the same thing: taking work that already exists and turning it into slides, fighting it into spreadsheets, formatting it into docs, or stitching it into a landing page. The data is in your Drive. The story is in your head. But somehow you still lose a Sunday to PowerPoint, Excel, and a half-built website.
             </motion.p>
 
             <motion.p
@@ -179,7 +179,7 @@ export default function AboutPage() {
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ height: 1, flex: 1, background: "var(--border)" }} />
               <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text3)" }}>
-                Agent One
+                Our First Suite
               </span>
               <div style={{ height: 1, flex: 1, background: "var(--border)" }} />
             </div>
@@ -194,10 +194,10 @@ export default function AboutPage() {
                 lineHeight: 1.2,
               }}
             >
-              OpenSlide is the first.
+              OpenSlide is what came out of it.
             </h2>
             <p style={{ fontSize: 16, lineHeight: 1.75, color: "var(--text2)", margin: 0 }}>
-              Describe what you need. Connect your tools. Watch it build. We&apos;re just getting started. Over the coming months we&apos;ll be rolling out more agents built on the same foundation, each one specialized, each one connected to how you already work.
+              Describe what you need. Connect your tools. Watch it build. What started as slides is now four surfaces in one chat: presentations, sheets, docs, and apps. And we&apos;re still just getting started. More specialized agents are coming, each one connected to how you already work, built for the parts of your day that OpenSlide doesn&apos;t already cover.
             </p>
           </motion.section>
 

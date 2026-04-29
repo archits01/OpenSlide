@@ -311,9 +311,9 @@ export function Sidebar({
                     shrinkHeight={75}
                     expandHeight={130}
                     media={[
-                      { src: "https://cd-misc.s3.us-east-2.amazonaws.com/sidebar/third.webp" },
-                      { src: "https://cd-misc.s3.us-east-2.amazonaws.com/sidebar/second.webp" },
-                      { src: "https://cd-misc.s3.us-east-2.amazonaws.com/sidebar/first.webp" },
+                      { src: "/sidebar/sidebar-sheets.webp" },
+                      { src: "/sidebar/sidebar-docs.webp" },
+                      { src: "/sidebar/sidebar-slides.webp" },
                     ]}
                   />
                   <InfoCardFooter
