@@ -14,6 +14,7 @@ import {
   PanelRightCloseIcon,
   Settings01Icon,
   ArrowUpRight01Icon,
+  AppStoreIcon,
 } from "@hugeicons/core-free-icons";
 import { createClient } from "@/lib/supabase/client";
 import type { User, SupabaseClient } from "@supabase/supabase-js";
@@ -32,6 +33,17 @@ import {
 interface SidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+}
+
+function SheetsIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2.5" />
+      <line x1="3" y1="9" x2="21" y2="9" />
+      <line x1="3" y1="15" x2="21" y2="15" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+    </svg>
+  );
 }
 
 function WordMark() {
@@ -120,9 +132,9 @@ export function Sidebar({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { profile, refresh: refreshProfile } = useProfile();
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   useEffect(() => {
@@ -141,7 +153,7 @@ export function Sidebar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const PROTECTED = ["/presentations", "/docs", "/assets", "/brand", "/settings"];
+  const PROTECTED = ["/presentations", "/websites", "/docs", "/sheets", "/assets", "/brand", "/settings"];
   function navTo(href: string) {
     if (!user && PROTECTED.includes(href)) {
       router.push("/?auth=1");
@@ -154,7 +166,9 @@ export function Sidebar({
     const collapsedNav = [
       { icon: <HugeiconsIcon icon={GridViewIcon} size={20} strokeWidth={2} />, label: "Explore", href: "/" },
       { icon: <HugeiconsIcon icon={Presentation01Icon} size={20} strokeWidth={2} />, label: "Presentations", href: "/presentations" },
+      { icon: <HugeiconsIcon icon={AppStoreIcon} size={20} strokeWidth={2} />, label: "Apps", href: "/websites" },
       { icon: <HugeiconsIcon icon={File01Icon} size={20} strokeWidth={2} />, label: "Docs", href: "/docs" },
+      { icon: <SheetsIcon size={20} />, label: "Sheets", href: "/sheets" },
       { icon: <HugeiconsIcon icon={FolderOpenIcon} size={20} strokeWidth={2} />, label: "Assets", href: "/assets" },
       { icon: <HugeiconsIcon icon={BrushIcon} size={20} strokeWidth={2} />, label: "Brand Kit", href: "/brand" },
     ];
@@ -241,10 +255,22 @@ export function Sidebar({
           onClick={() => navTo("/presentations")}
         />
         <NavItem
+          icon={<HugeiconsIcon icon={AppStoreIcon} size={18} strokeWidth={2} />}
+          label="Apps"
+          active={pathname === "/websites"}
+          onClick={() => navTo("/websites")}
+        />
+        <NavItem
           icon={<HugeiconsIcon icon={File01Icon} size={18} strokeWidth={2} />}
           label="Docs"
           active={pathname === "/docs"}
           onClick={() => navTo("/docs")}
+        />
+        <NavItem
+          icon={<SheetsIcon size={18} />}
+          label="Sheets"
+          active={pathname === "/sheets"}
+          onClick={() => navTo("/sheets")}
         />
         <NavItem
           icon={<HugeiconsIcon icon={FolderOpenIcon} size={18} strokeWidth={2} />}

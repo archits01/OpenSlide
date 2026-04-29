@@ -268,25 +268,62 @@ function classifyByKeywords(prompt: string): DocClassification | null {
 
 const CLASSIFICATION_PROMPT = `You are a document type classifier. Given a user prompt, classify it into exactly ONE category:
 
-- business: Reports, SOPs, memos, proposals, letters, resumes, handbooks, meeting minutes, onboarding docs, certificates, cover letters, white papers, case studies. Default for general "create a document" requests.
+- business: Reports, SOPs, memos, proposals, letters, resumes, handbooks, meeting minutes, onboarding docs, certificates, cover letters, white papers, case studies, business plans. Default for general "create a document" requests.
 - financial: Spreadsheets, budgets, balance sheets, income statements, P&L, invoices with calculations, tax records, expense trackers, financial models, payroll. Anything primarily numerical/tabular.
 - marketing: Email templates, brochures, flyers, posters, newsletters, social media content, blog posts, ad copy, brand guidelines, product sheets, press releases, infographics. Anything creative/visual/brand-forward.
 - legal: Contracts, NDAs, agreements, terms of service, privacy policies, compliance docs, affidavits, MOUs, leases, legal notices, waivers. Also PDF operations (merge, split, fill forms, OCR, encrypt).
 - presentations_redirect: Slide decks, pitch decks, keynotes, presentations. This person wants slides, not a document.
+
+Disambiguation rules:
+- "Business plan" → business (strategic prose, not a spreadsheet)
+- "Pitch deck" / "investor deck" / "keynote" → presentations_redirect (slides)
+- "Product one-pager" / "product sheet" → marketing (brand collateral)
+- "Employment contract" / "offer letter" → legal (binding agreement)
+- "Financial report" (narrative prose about finance) → business
+- "Financial model" / "P&L" (numerical/tabular) → financial
+- When truly ambiguous, default to "business" with "low" confidence.
+
+Examples (these are the kinds of ambiguous prompts that actually reach this LLM — clear prompts like "write an NDA" or "build a pitch deck" never reach you because upstream keyword rules already route them):
+
+Input: "Write something to explain our refund policy to customers"
+Output: {"category":"business","confidence":"medium"}
+
+Input: "Help me put together numbers for next week's board meeting"
+Output: {"category":"financial","confidence":"medium"}
+
+Input: "Create something I can share with my team about Q4 plans"
+Output: {"category":"business","confidence":"low"}
+
+Input: "I need a one-pager to send to enterprise prospects"
+Output: {"category":"marketing","confidence":"high"}
+
+Input: "Write up our data-security practices for an upcoming compliance audit"
+Output: {"category":"legal","confidence":"medium"}
+
+Input: "Help me draft the language for our new user agreement"
+Output: {"category":"legal","confidence":"high"}
+
+Input: "Summarize our product roadmap for the exec team"
+Output: {"category":"business","confidence":"medium"}
+
+Input: "I need to pitch this idea to the VP tomorrow — can you help?"
+Output: {"category":"presentations_redirect","confidence":"high"}
 
 Respond with ONLY a JSON object:
 {"category": "business|financial|marketing|legal|presentations_redirect", "confidence": "high|medium|low"}`;
 
 import { callRouterNonStreaming } from "@/agent/stream";
 
-const CLASSIFIER_MODEL = "claude-haiku-4-5-20251001";
+// Sonnet is used only for ambiguous prompts that slip past the Phase-1 keyword rules.
+// Clear prompts never reach this call, so the latency/cost hit is bounded.
+const CLASSIFIER_MODEL = "claude-sonnet-4-6";
 const CLASSIFIER_TIMEOUT_MS = 10_000;
 
 async function classifyByLLM(prompt: string): Promise<DocClassification> {
   try {
     const text = await callRouterNonStreaming({
       model: CLASSIFIER_MODEL,
-      max_tokens: 50,
+      max_tokens: 100,
       system: [{ type: "text", text: CLASSIFICATION_PROMPT }],
       messages: [{ role: "user", content: prompt }],
     });

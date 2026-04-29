@@ -433,9 +433,9 @@ function EmptyState({ onUpload }: { onUpload: () => void }) {
 
 export default function AssetsPage() {
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   const [assets, setAssets] = useState<Asset[]>([]);

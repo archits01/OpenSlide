@@ -451,69 +451,183 @@ Use callout on Patterns 2, 4, 5, 12. Dark footer on Patterns 8, 11, 14. Light fo
 
 ## SVG Chart Recipes
 
-### Donut Chart
+**Chart selection decision tree:**
+- Data has a time axis (years, quarters, months)? → **Line Chart**
+- Data shows proportions, market share, or composition? → **Donut Chart**
+- Data ranks items with text labels (countries, products, segments)? → **Horizontal Bar Chart**
+- Everything else (categorical comparison, metrics) → **Bar Chart** (default)
+
+Only these 4 chart types are supported. Generate the chart SVG/HTML directly in the slide content — there is no external chart renderer.
+
+### 1. Bar Chart
+
+**Height Calculation (CRITICAL):**
 ```
-r=50, cx/cy=75, circumference=314.2
-Segment X%: stroke-dasharray="X*3.142, 314.2"
-Offset = -sum_of_prior_dasharray_values (dashoffset)
-Rotation: transform="rotate(-90 75 75)"
-Stroke-width: 20–22
+bar_height = (data_value / max_value) * chart_height_px
+
+Example: max=$15M, value=$7.5M, chart_height=200px
+  height = (7.5 / 15) * 200 = 100px  ← CORRECT
+  height = 7.5px                      ← WRONG (never use raw values as pixels)
 ```
+
+Always find max across all data points first. Y-axis: 4-5 gridlines from 0 to max with unit labels (B, M, K).
 
 ```html
-<svg viewBox="0 0 150 150" width="130" height="130">
-  <!-- SaaS 80% = 251.3 -->
-  <circle cx="75" cy="75" r="50" fill="none" stroke="#333333" stroke-width="22"
-    stroke-dasharray="251.3 314.2" stroke-dashoffset="0" transform="rotate(-90 75 75)"/>
-  <!-- Pro Services 14% = 44.0, offset=-251.3 -->
-  <circle cx="75" cy="75" r="50" fill="none" stroke="#2D7D46" stroke-width="22"
-    stroke-dasharray="44.0 314.2" stroke-dashoffset="-251.3" transform="rotate(-90 75 75)"/>
-  <text x="75" y="72" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#9CA3AF">SaaS</text>
-  <text x="75" y="88" text-anchor="middle" font-family="Inter,sans-serif" font-size="20" font-weight="800" fill="#333333">80%</text>
-</svg>
-```
-
-### Bar + Line Chart (Revenue Trend) — viewBox: 0 0 620 290
-```
-Chart area: x:52→608, y:18→250, height=232
-Scale: y = 250 - (value / max) * 232
-Beat-plan bars: fill="#2D7D46", miss bars: fill="#4B5563"
-Beat annotation: <rect fill="#D1FAE5" rx="3"/> + <text fill="#2D7D46">BEAT PLAN ✓</text>
-Target line: <polyline stroke="#2D7D46" stroke-width="2.5"/> + <circle fill="#2D7D46" stroke="#fff" r="4"/>
-Gridlines: stroke="#F3F4F6" stroke-dasharray="3,2"
-Per bar: value label above bar, % vs target below month label (red=miss, green=beat)
-```
-
-### Diverging Bar Chart (Segment variance) — CSS grid, not SVG
-```html
-<div style="display:grid;grid-template-columns:80px 1fr 1fr;align-items:center;row-gap:12px;">
-  <!-- Positive: bar in right column -->
-  <div style="text-align:right;font-size:12px;font-weight:600;">Enterprise</div>
-  <div></div>
-  <div style="display:flex;align-items:center;gap:8px;">
-    <div style="width:48px;height:22px;background:#2D7D46;border-radius:0 6px 6px 0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">+4%</div>
-    <span style="font-size:11px;color:#2D7D46;font-weight:600;">Beat ✓</span>
+<div style="position:relative;height:200px;display:flex;align-items:flex-end;gap:16px;padding-left:44px;">
+  <!-- Y-axis labels -->
+  <div style="position:absolute;left:0;top:0;bottom:0;display:flex;flex-direction:column;justify-content:space-between;">
+    <span style="font-size:10px;color:#9CA3AF;font-family:Inter,sans-serif;">$15M</span>
+    <span style="font-size:10px;color:#9CA3AF;font-family:Inter,sans-serif;">$10M</span>
+    <span style="font-size:10px;color:#9CA3AF;font-family:Inter,sans-serif;">$5M</span>
+    <span style="font-size:10px;color:#9CA3AF;font-family:Inter,sans-serif;">$0</span>
   </div>
-  <!-- Negative: bar in left column -->
-  <div style="text-align:right;font-size:12px;font-weight:600;">SMB</div>
-  <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-    <span style="font-size:11px;color:#C0504D;font-weight:600;">−12%</span>
-    <div style="width:96px;height:22px;background:#C0504D;border-radius:6px 0 0 6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;">Under</div>
+  <!-- Gridlines -->
+  <div style="position:absolute;left:40px;right:0;top:0;height:1px;background:#F3F4F6;"></div>
+  <div style="position:absolute;left:40px;right:0;top:33%;height:1px;background:#F3F4F6;"></div>
+  <div style="position:absolute;left:40px;right:0;top:66%;height:1px;background:#F3F4F6;"></div>
+  <!-- Repeat this bar group per category -->
+  <div style="display:flex;align-items:flex-end;gap:4px;flex:1;justify-content:center;position:relative;">
+    <div style="width:18px;background:#E5E7EB;border-radius:3px 3px 0 0;height:100px;"></div>
+    <div style="width:18px;background:#2D7D46;border-radius:3px 3px 0 0;height:150px;"></div>
+    <div style="position:absolute;bottom:-20px;font-size:10px;color:#9CA3AF;text-align:center;width:100%;">2024</div>
   </div>
-  <div></div>
 </div>
 ```
 
-### Mini Trend Bar Charts (Unit Economics)
+Bar colors: Primary = `#2D7D46`, Secondary/comparison = `#E5E7EB`, Negative/miss = `#C0504D`.
+
+### 2. Donut Chart
+
+**Math (CRITICAL — get this right):**
 ```
-viewBox: 0 0 200 140
-3 bars: Q1'25, Q3'25, Q1'26
-Target reference line: stroke="#2D7D46" stroke-dasharray="3,2"
-Rising-bad metric (payback period): latest bar fill="#C0504D"
-Falling-bad metric (Rule of 40): below-threshold bar fill="#C0504D"
-Rule of 40 scale (max=50, chart_h=120, baseline=130): y=130-(val/50)*120, h=(val/50)*120
-CAC Payback scale (max=22, chart_h=120, baseline=130): y=130-(val/22)*120, h=(val/22)*120
+r=65, cx/cy=100, circumference = 2 * pi * 65 = 408.4
+Segment X%: stroke-dasharray = "(X / 100) * 408.4, 408.4"
+Offset = negative sum of ALL prior segment dasharray values
+Rotation: transform="rotate(-90 100 100)" — starts from 12 o'clock
+Stroke-width: 28
 ```
+
+**ALWAYS use this flex layout — donut left, legend right:**
+```html
+<div style="display:flex;align-items:center;gap:32px;">
+  <!-- Donut SVG — 200x200, larger and clearer -->
+  <svg viewBox="0 0 200 200" width="200" height="200">
+    <!-- Segment 1: 55% = 224.6, offset=0 -->
+    <circle cx="100" cy="100" r="65" fill="none" stroke="#2D7D46" stroke-width="28"
+      stroke-dasharray="224.6 408.4" stroke-dashoffset="0" transform="rotate(-90 100 100)"/>
+    <!-- Segment 2: 25% = 102.1, offset=-224.6 -->
+    <circle cx="100" cy="100" r="65" fill="none" stroke="#333333" stroke-width="28"
+      stroke-dasharray="102.1 408.4" stroke-dashoffset="-224.6" transform="rotate(-90 100 100)"/>
+    <!-- Segment 3: 20% = 81.7, offset=-326.7 -->
+    <circle cx="100" cy="100" r="65" fill="none" stroke="#E5E7EB" stroke-width="28"
+      stroke-dasharray="81.7 408.4" stroke-dashoffset="-326.7" transform="rotate(-90 100 100)"/>
+    <!-- Center label -->
+    <text x="100" y="94" text-anchor="middle" font-family="Inter,sans-serif" font-size="12" fill="#9CA3AF">Total</text>
+    <text x="100" y="114" text-anchor="middle" font-family="Inter,sans-serif" font-size="24" font-weight="800" fill="#333333">$50M</text>
+  </svg>
+  <!-- Legend — ALWAYS include this, never skip -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:#2D7D46;flex-shrink:0;"></div>
+      <span style="font-size:14px;font-weight:600;color:#333333;">SaaS Revenue</span>
+      <span style="font-size:14px;color:#9CA3AF;margin-left:auto;">55%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:#333333;flex-shrink:0;"></div>
+      <span style="font-size:14px;font-weight:600;color:#333333;">Services</span>
+      <span style="font-size:14px;color:#9CA3AF;margin-left:auto;">25%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:#E5E7EB;flex-shrink:0;"></div>
+      <span style="font-size:14px;font-weight:600;color:#333333;">Other</span>
+      <span style="font-size:14px;color:#9CA3AF;margin-left:auto;">20%</span>
+    </div>
+  </div>
+</div>
+```
+
+Donut colors: Largest = `#2D7D46`, second = `#333333`, third = `#E5E7EB`. Max 4-5 segments — group small ones as "Other".
+
+### 3. Line Chart
+
+**Point Calculation:**
+```
+chart_width=500, chart_height=180, padding_left=44, padding_bottom=24
+x = padding_left + index * (chart_width / (num_points - 1))
+y = chart_height - (value / max_value) * (chart_height - padding_bottom)
+```
+
+```html
+<div style="position:relative;height:200px;padding-left:44px;">
+  <!-- Y-axis labels -->
+  <div style="position:absolute;left:0;top:0;bottom:24px;display:flex;flex-direction:column;justify-content:space-between;">
+    <span style="font-size:10px;color:#9CA3AF;">$20M</span>
+    <span style="font-size:10px;color:#9CA3AF;">$10M</span>
+    <span style="font-size:10px;color:#9CA3AF;">$0</span>
+  </div>
+  <!-- Gridlines -->
+  <div style="position:absolute;left:40px;right:0;top:0;height:1px;background:#F3F4F6;"></div>
+  <div style="position:absolute;left:40px;right:0;top:50%;height:1px;background:#F3F4F6;"></div>
+  <!-- SVG line + dots -->
+  <svg viewBox="0 0 520 180" width="100%" height="176" style="position:absolute;left:40px;top:0;">
+    <polygon points="0,180 0,126 130,90 260,54 390,36 500,18 500,180"
+      fill="#2D7D46" opacity="0.06"/>
+    <polyline points="0,126 130,90 260,54 390,36 500,18"
+      fill="none" stroke="#2D7D46" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="0" cy="126" r="4" fill="#2D7D46"/>
+    <circle cx="130" cy="90" r="4" fill="#2D7D46"/>
+    <circle cx="260" cy="54" r="4" fill="#2D7D46"/>
+    <circle cx="390" cy="36" r="4" fill="#2D7D46"/>
+    <circle cx="500" cy="18" r="4" fill="#2D7D46"/>
+  </svg>
+  <!-- X-axis labels -->
+  <div style="position:absolute;bottom:0;left:44px;right:0;display:flex;justify-content:space-between;">
+    <span style="font-size:10px;color:#9CA3AF;">2020</span>
+    <span style="font-size:10px;color:#9CA3AF;">2021</span>
+    <span style="font-size:10px;color:#9CA3AF;">2022</span>
+    <span style="font-size:10px;color:#9CA3AF;">2023</span>
+    <span style="font-size:10px;color:#9CA3AF;">2024</span>
+  </div>
+</div>
+```
+
+Line colors: Primary = `#2D7D46`, Secondary line = `#9CA3AF` (dashed: `stroke-dasharray="6,4"`).
+
+### 4. Horizontal Bar Chart
+
+**Width Calculation:** `bar_width = (value / max_value) * 100%`
+
+```html
+<div style="display:flex;flex-direction:column;gap:14px;">
+  <!-- Repeat per item -->
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:13px;font-weight:600;color:#333333;width:100px;text-align:right;flex-shrink:0;">Enterprise</span>
+    <div style="flex:1;background:#F3F4F6;border-radius:6px;height:26px;overflow:hidden;">
+      <div style="height:100%;width:85%;background:#2D7D46;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+        <span style="font-size:11px;font-weight:700;color:#fff;">$42.5M</span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:13px;font-weight:600;color:#333333;width:100px;text-align:right;flex-shrink:0;">Mid-Market</span>
+    <div style="flex:1;background:#F3F4F6;border-radius:6px;height:26px;overflow:hidden;">
+      <div style="height:100%;width:52%;background:#2D7D46;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+        <span style="font-size:11px;font-weight:700;color:#fff;">$26.0M</span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:13px;font-weight:600;color:#333333;width:100px;text-align:right;flex-shrink:0;">SMB</span>
+    <div style="flex:1;background:#F3F4F6;border-radius:6px;height:26px;overflow:hidden;">
+      <div style="height:100%;width:30%;background:#9CA3AF;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+        <span style="font-size:11px;font-weight:700;color:#fff;">$15.0M</span>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+Bar colors: Top item = `#2D7D46`, remaining = `#9CA3AF`. Highlight a specific bar with `#2D7D46` to draw attention.
 
 ---
 

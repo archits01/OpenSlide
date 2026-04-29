@@ -7,16 +7,17 @@ datasource db {
 }
 
 model User {
-  id             String   @id @db.Uuid
-  email          String?
-  fullName       String?  @map("full_name")
-  avatarUrl      String?  @map("avatar_url")
-  avatarPath     String?  @map("avatar_path")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @default(now()) @map("updated_at")
+  id         String   @id @db.Uuid
+  email      String?
+  fullName   String?  @map("full_name")
+  avatarUrl  String?  @map("avatar_url")
+  avatarPath String?  @map("avatar_path")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @default(now()) @map("updated_at")
 
   sessions        Session[]
   brandConfigs    BrandConfig[]
+  brandKits       BrandKit[]
   userConnections UserConnection[]
   apiKeys         ApiKey[]
 
@@ -26,11 +27,11 @@ model User {
 model BrandConfig {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId          String   @map("user_id") @db.Uuid
-  name            String   @default("Company Template")
-  brandJson       Json     @default("{}") @map("brand_json")
-  brandConfigJson Json     @default("{}") @map("brand_config_json")
-  strictness      String   @default("balanced")
-  isActive        Boolean  @default(true) @map("is_active")
+  name            String   @default("Company Template") // user-friendly label
+  brandJson       Json     @default("{}") @map("brand_json") // Bucket 1: auto-extracted
+  brandConfigJson Json     @default("{}") @map("brand_config_json") // Bucket 2: user-configured
+  strictness      String   @default("balanced") // strict | balanced | flexible
+  isActive        Boolean  @default(true) @map("is_active") // only one active per user
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at")
 
@@ -40,31 +41,118 @@ model BrandConfig {
   @@map("brand_configs")
 }
 
+/// BrandKit — v2 brand system. A brand kit is a generated skill: markdown files
+/// (design-system.md, layout-library.md, SKILL.md) that get loaded into the
+/// system prompt the same way disk-based skills do. Brand variables are stored
+/// separately and substituted into the markdown at load time.
+model BrandKit {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String  @map("user_id") @db.Uuid
+  name        String
+  description String? @db.Text
+  isDefault   Boolean @default(false) @map("is_default")
+
+  /// Optional registered domain for the kit's brand (e.g. "mckinsey.com").
+  /// Used by fetch_logo to block domain-matched logo lookups for the kit's
+  /// own brand without relying on naive name-stem matching.
+  domain String?
+
+  /// Optional cap on layout patterns to generate during extraction. Default 12.
+  layoutCap Int @default(12) @map("layout_cap")
+
+  /// Brand variables (palette, fonts, logo, header text) — substituted into markdown
+  /// at load time via {{brand.path}} placeholders. See src/lib/brand/types.ts BrandVars.
+  brandVars Json @default("{}") @map("brand_vars")
+
+  /// Generated skill files. Markdown with {{brand.*}} placeholders.
+  skillMd         String? @map("skill_md") @db.Text
+  designSystemMd  String? @map("design_system_md") @db.Text
+  layoutLibraryMd String? @map("layout_library_md") @db.Text
+
+  /// Source material refs for re-extraction. [{ kind, storageUrl, originalName }]
+  sourceFiles Json    @default("[]") @map("source_files")
+  sourceNotes String? @map("source_notes") @db.Text
+
+  /// Generation pipeline metadata.
+  status          String   @default("draft") // draft | extracting | ready | failed
+  extractionLog   Json     @default("[]") @map("extraction_log")
+  version         Int      @default(1)
+  /// Files the user has manually edited — protected from re-extraction overwrite.
+  /// Values: "skillMd" | "designSystemMd" | "layoutLibraryMd"
+  userEditedFiles String[] @default([]) @map("user_edited_files")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  versionsHistory BrandKitVersion[]
+
+  @@index([userId])
+  @@index([userId, isDefault])
+  @@map("brand_kits")
+}
+
+/// Append-only snapshot of a brand kit at a point in time. Created whenever
+/// any of skillMd / designSystemMd / layoutLibraryMd / brandVars changes via
+/// PATCH or re-extract. Lets users view history and roll back to a prior
+/// version.
+model BrandKitVersion {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  brandKitId      String   @map("brand_kit_id") @db.Uuid
+  version         Int
+  brandVars       Json     @map("brand_vars")
+  skillMd         String?  @map("skill_md") @db.Text
+  designSystemMd  String?  @map("design_system_md") @db.Text
+  layoutLibraryMd String?  @map("layout_library_md") @db.Text
+  createdAt       DateTime @default(now()) @map("created_at")
+  /// Short label for what changed (e.g. "extracted", "manual edit", "rollback to v3").
+  changeReason    String?  @map("change_reason")
+
+  brandKit BrandKit @relation(fields: [brandKitId], references: [id], onDelete: Cascade)
+
+  @@index([brandKitId, version])
+  @@map("brand_kit_versions")
+}
+
 model Session {
-  id            String    @id
-  title         String    @default("Untitled Presentation")
-  type          String    @default("slides")
-  logoUrl       String?   @map("logo_url")
-  theme         String?
-  themeColors   Json?     @map("theme_colors")
-  isPublic      Boolean   @default(false) @map("is_public")
-  isReplay      Boolean   @default(false) @map("is_replay")
-  messages      Json      @default("[]")
-  toolHistory   Json      @default("[]") @map("tool_history")
-  attachments   Json      @default("[]")
+  id                       String    @id
+  title                    String    @default("Untitled Presentation")
+  type                     String    @default("slides")
+  logoUrl                  String?   @map("logo_url")
+  theme                    String?
+  themeColors              Json?     @map("theme_colors")
+  isPublic                 Boolean   @default(false) @map("is_public")
+  isReplay                 Boolean   @default(false) @map("is_replay")
+  messages                 Json      @default("[]")
+  toolHistory              Json      @default("[]") @map("tool_history")
+  attachments              Json      @default("[]")
   slideCategory            String?   @map("slide_category")
   presentationType         String?   @map("presentation_type")
   classificationConfidence String?   @map("classification_confidence")
   classificationMethod     String?   @map("classification_method")
   classifiedAt             DateTime? @map("classified_at")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @default(now()) @map("updated_at")
-  lastOpenedAt  DateTime? @map("last_opened_at")
-  userId        String?   @map("user_id") @db.Uuid
+  websiteFilesJson         Json?     @map("website_files_json")
+  websiteEnvVars           String?   @map("website_env_vars")
+  previewScreenshotUrl     String?   @map("preview_screenshot_url")
+  webcontainerSnapshotUrl  String?   @map("webcontainer_snapshot_url")
+  websiteSandboxDirty      Boolean   @default(false) @map("website_sandbox_dirty")
+  websiteTemplateName      String?   @map("website_template_name")
+  websitePublishedUrl      String?   @map("website_published_url")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @default(now()) @map("updated_at")
+  lastOpenedAt             DateTime? @map("last_opened_at")
+  userId                   String?   @map("user_id") @db.Uuid
+  brandKitId               String?   @map("brand_kit_id") @db.Uuid
+  /// Topic of the deck — extracted from the first user message. Used to
+  /// distinguish "deck about X" from "deck styled like Y" so fetch_logo
+  /// can target the right entity. Free-form text, not a key.
+  topicSubject             String?   @map("topic_subject")
 
-  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  slides  Slide[]
-  outline Outline?
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  brandKit  BrandKit?  @relation(fields: [brandKitId], references: [id], onDelete: SetNull)
+  slides    Slide[]
+  outline   Outline?
   templates Template[]
 
   @@index([userId, updatedAt(sort: Desc)])
@@ -72,14 +160,30 @@ model Session {
   @@map("sessions")
 }
 
+model ClassificationEvent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sessionId    String   @map("session_id")
+  category     String
+  confidence   String
+  method       String
+  promptLength Int      @map("prompt_length")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([category])
+  @@map("classification_events")
+}
+
 model Slide {
-  id        String  @id
-  index     Int
-  title     String
-  content   String  @db.Text
-  layout    String  @default("content")
-  theme     String?
-  notes     String?
+  id                 String  @id
+  index              Int
+  title              String
+  content            String  @db.Text
+  layout             String  @default("content")
+  theme              String?
+  notes              String?
+  workbookJson       String? @map("workbook_json") @db.Text
+  workbookSheetCount Int?    @map("workbook_sheet_count")
 
   sessionId String  @map("session_id")
   session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -89,8 +193,8 @@ model Slide {
 }
 
 model Outline {
-  id                String  @id
-  presentationTitle String  @map("presentation_title")
+  id                String @id
+  presentationTitle String @map("presentation_title")
   slides            Json
 
   sessionId String  @unique @map("session_id")
@@ -139,6 +243,9 @@ model Template {
   slug        String   @unique
   title       String
   description String?  @db.Text
+  /// Which mode this template belongs to on the home gallery: slides | docs | sheets | website.
+  /// Existing rows default to "slides" so no backfill needed.
+  mode        String   @default("slides")
   category    String
   tags        String[] @default([])
   bg          String
@@ -151,6 +258,6 @@ model Template {
 
   session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
 
-  @@index([isActive, sortOrder])
+  @@index([mode, isActive, sortOrder])
   @@map("templates")
 }

@@ -31,18 +31,16 @@ const ALL_CONNECTORS: ConnectorDef[] = [
   { id: 'slack', label: 'Slack', description: 'Share decks to channels and threads', iconUrl: '/images/connectors/slack.png', action: 'connect', badge: 'Soon' },
 ];
 
-type Tab = 'apps' | 'custom-mcp';
-
 interface ConnectorModalProps {
   open: boolean;
   onClose: () => void;
 }
 
 export function ConnectorModal({ open, onClose }: ConnectorModalProps) {
-  const [tab, setTab] = useState<Tab>('apps');
   const [search, setSearch] = useState('');
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -54,7 +52,7 @@ export function ConnectorModal({ open, onClose }: ConnectorModalProps) {
   }, []);
 
   useEffect(() => {
-    if (open) { load(); setSearch(''); setTab('apps'); }
+    if (open) { load(); setSearch(''); }
   }, [open, load]);
 
   // Listen for OAuth popup success
@@ -81,6 +79,20 @@ export function ConnectorModal({ open, onClose }: ConnectorModalProps) {
     const url = `/api/auth/connect/${id}?returnTo=${encodeURIComponent(returnTo)}`;
     const popup = window.open(url, `oauth_${id}`, 'width=600,height=700,left=200,top=100');
     if (!popup) window.location.href = url;
+  }
+
+  async function handleDisconnect(id: string) {
+    setDisconnecting(id);
+    try {
+      await fetch('/api/user/connections', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: id }),
+      });
+      await load();
+    } finally {
+      setDisconnecting(null);
+    }
   }
 
   // Filter by search
@@ -143,33 +155,11 @@ export function ConnectorModal({ open, onClose }: ConnectorModalProps) {
               </button>
             </div>
 
-            {/* Tabs + Search */}
             <div style={{
               padding: '16px 24px 0',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
               gap: '16px',
             }}>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {(['apps', 'custom-mcp'] as Tab[]).map((t) => {
-                  const labels: Record<Tab, string> = { apps: 'Apps', 'custom-mcp': 'Custom MCP' };
-                  const active = tab === t;
-                  return (
-                    <button
-                      key={t}
-                      onClick={() => setTab(t)}
-                      style={{
-                        padding: '6px 14px', fontSize: '13px', fontWeight: active ? 600 : 400,
-                        color: active ? 'white' : 'rgba(255,255,255,0.45)',
-                        background: 'transparent', border: 'none', cursor: 'pointer',
-                        borderBottom: active ? '2px solid white' : '2px solid transparent',
-                        paddingBottom: '8px',
-                      }}
-                    >
-                      {labels[t]}
-                    </button>
-                  );
-                })}
-              </div>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '8px',
                 background: 'rgba(255,255,255,0.06)', borderRadius: '8px',
@@ -193,65 +183,58 @@ export function ConnectorModal({ open, onClose }: ConnectorModalProps) {
 
             {/* Content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px 24px' }}>
-              {tab === 'apps' && (
+              {loading ? (
+                <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', textAlign: 'center', padding: '40px 0' }}>Loading…</p>
+              ) : (
                 <>
-                  {loading ? (
-                    <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', textAlign: 'center', padding: '40px 0' }}>Loading…</p>
-                  ) : (
+                  {/* Recommended */}
+                  {recommended.length > 0 && (
                     <>
-                      {/* Recommended */}
-                      {recommended.length > 0 && (
-                        <>
-                          <p style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Recommended
-                          </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '24px' }}>
-                            {recommended.map((c) => (
-                              <ConnectorCard
-                                key={c.id}
-                                connector={c}
-                                connection={connections.find((x) => x.provider === c.id)}
-                                onConnect={handleConnect}
-                              />
-                            ))}
-                          </div>
-                        </>
-                      )}
-
-                      {/* All Apps */}
-                      {apps.length > 0 && (
-                        <>
-                          <p style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                            Apps
-                          </p>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                            {apps.map((c) => (
-                              <ConnectorCard
-                                key={c.id}
-                                connector={c}
-                                connection={connections.find((x) => x.provider === c.id)}
-                                onConnect={handleConnect}
-                              />
-                            ))}
-                          </div>
-                        </>
-                      )}
-
-                      {filtered.length === 0 && (
-                        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', textAlign: 'center', padding: '40px 0' }}>
-                          No connectors match &quot;{search}&quot;
-                        </p>
-                      )}
+                      <p style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Recommended
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '24px' }}>
+                        {recommended.map((c) => (
+                          <ConnectorCard
+                            key={c.id}
+                            connector={c}
+                            connection={connections.find((x) => x.provider === c.id)}
+                            onConnect={handleConnect}
+                            onDisconnect={handleDisconnect}
+                            isDisconnecting={disconnecting === c.id}
+                          />
+                        ))}
+                      </div>
                     </>
                   )}
-                </>
-              )}
 
-              {tab === 'custom-mcp' && (
-                <div style={{ textAlign: 'center', padding: '60px 0', color: 'rgba(255,255,255,0.35)' }}>
-                  <p style={{ fontSize: '15px', fontWeight: 500, marginBottom: '8px' }}>Custom MCP</p>
-                  <p style={{ fontSize: '13px' }}>Connect your own MCP server by URL. Coming soon.</p>
-                </div>
+                  {/* All Apps */}
+                  {apps.length > 0 && (
+                    <>
+                      <p style={{ fontSize: '12px', fontWeight: 500, color: 'rgba(255,255,255,0.35)', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        Apps
+                      </p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        {apps.map((c) => (
+                          <ConnectorCard
+                            key={c.id}
+                            connector={c}
+                            connection={connections.find((x) => x.provider === c.id)}
+                            onConnect={handleConnect}
+                            onDisconnect={handleDisconnect}
+                            isDisconnecting={disconnecting === c.id}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {filtered.length === 0 && (
+                    <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '14px', textAlign: 'center', padding: '40px 0' }}>
+                      No connectors match &quot;{search}&quot;
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </motion.div>
@@ -267,48 +250,78 @@ function ConnectorCard({
   connector: c,
   connection: conn,
   onConnect,
+  onDisconnect,
+  isDisconnecting,
 }: {
   connector: ConnectorDef;
   connection?: Connection;
   onConnect: (id: string) => void;
+  onDisconnect: (id: string) => void;
+  isDisconnecting: boolean;
 }) {
   const isConnected = conn?.status === 'active';
   const isBroken = conn?.status === 'broken';
   const isSoon = c.badge === 'Soon';
-  const isClickable = !isSoon && c.action === 'connect' && !isConnected;
-
-  // Action label for the button
-  let actionLabel = 'Connect';
-  if (isConnected) actionLabel = 'Connected';
-  else if (isBroken) actionLabel = 'Reconnect';
-  else if (isSoon) actionLabel = 'Soon';
-  else if (c.action === 'built-in') actionLabel = 'Built-in';
+  const isBuiltIn = c.action === 'built-in';
+  const isClickable = !isSoon && !isBuiltIn && !isConnected;
 
   return (
     <div
-      onClick={() => { if (isClickable) onConnect(c.id); }}
       style={{
         display: 'flex', alignItems: 'flex-start', gap: '14px',
         padding: '16px',
         background: 'rgba(255,255,255,0.04)',
         borderRadius: '12px',
-        cursor: isClickable ? 'pointer' : 'default',
         opacity: isSoon ? 0.45 : 1,
-        transition: 'background 100ms',
-        border: isConnected ? '1px solid rgba(34,197,94,0.3)' : '1px solid transparent',
+        border: isConnected ? '1px solid rgba(34,197,94,0.3)' : isBroken ? '1px solid rgba(239,68,68,0.3)' : '1px solid transparent',
         position: 'relative',
       }}
-      onMouseEnter={(e) => { if (isClickable || isSoon) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
     >
-      {/* Action button — top right */}
-      <span style={{
-        position: 'absolute', top: '12px', right: '14px',
-        fontSize: '11px', fontWeight: 500,
-        color: isConnected ? '#22c55e' : isBroken ? '#ef4444' : 'rgba(255,255,255,0.4)',
-      }}>
-        {actionLabel}
-      </span>
+      {/* Top-right action */}
+      <div style={{ position: 'absolute', top: '10px', right: '12px', display: 'flex', gap: 6, alignItems: 'center' }}>
+        {(isConnected || isBroken) && !isBuiltIn && (
+          <button
+            onClick={() => { if (!isDisconnecting) onDisconnect(c.id); }}
+            disabled={isDisconnecting}
+            style={{
+              fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: 5,
+              border: '1px solid rgba(255,255,255,0.12)', background: 'transparent',
+              color: isDisconnecting ? 'rgba(255,255,255,0.25)' : 'rgba(239,68,68,0.8)',
+              cursor: isDisconnecting ? 'default' : 'pointer', lineHeight: '16px',
+              transition: 'color 100ms, border-color 100ms',
+            }}
+            onMouseEnter={(e) => { if (!isDisconnecting) { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = isDisconnecting ? 'rgba(255,255,255,0.25)' : 'rgba(239,68,68,0.8)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; }}
+          >
+            {isDisconnecting ? '…' : 'Disconnect'}
+          </button>
+        )}
+        {(!isConnected || isBroken) && !isBuiltIn && !isSoon && (
+          <button
+            onClick={() => onConnect(c.id)}
+            style={{
+              fontSize: '11px', fontWeight: 500, padding: '2px 8px', borderRadius: 5,
+              border: 'none', background: isBroken ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.1)',
+              color: isBroken ? '#ef4444' : 'rgba(255,255,255,0.6)',
+              cursor: 'pointer', lineHeight: '16px',
+              transition: 'background 100ms',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = isBroken ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.16)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = isBroken ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.1)'; }}
+          >
+            {isBroken ? 'Reconnect' : 'Connect'}
+          </button>
+        )}
+        {isConnected && !isBroken && !isBuiltIn && (
+          <span style={{ fontSize: '11px', fontWeight: 500, color: '#22c55e' }}>Connected</span>
+        )}
+        {isBuiltIn && (
+          <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.3)' }}>Built-in</span>
+        )}
+        {isSoon && (
+          <span style={{ fontSize: '11px', fontWeight: 500, color: 'rgba(255,255,255,0.3)' }}>Soon</span>
+        )}
+      </div>
 
       {/* Icon */}
       <div style={{
@@ -316,31 +329,32 @@ function ConnectorCard({
         background: 'rgba(255,255,255,0.06)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         flexShrink: 0,
-      }}>
+        cursor: isClickable ? 'pointer' : 'default',
+      }}
+        onClick={() => { if (isClickable) onConnect(c.id); }}
+      >
         <img src={c.iconUrl} alt="" width={22} height={22} />
       </div>
 
       {/* Text */}
-      <div style={{ flex: 1, minWidth: 0, paddingRight: '50px' }}>
+      <div style={{ flex: 1, minWidth: 0, paddingRight: '80px', cursor: isClickable ? 'pointer' : 'default' }}
+        onClick={() => { if (isClickable) onConnect(c.id); }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
           <span style={{ fontSize: '14px', fontWeight: 500, color: 'white' }}>{c.label}</span>
-          {c.badge && (
+          {c.badge && !isSoon && (
             <span style={{
               fontSize: '10px', fontWeight: 600, textTransform: 'uppercase',
               padding: '1px 6px', borderRadius: '4px',
-              background: c.badge === 'New' ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.08)',
-              color: c.badge === 'New' ? '#818cf8' : 'rgba(255,255,255,0.4)',
+              background: 'rgba(99,102,241,0.2)', color: '#818cf8',
               letterSpacing: '0.04em',
             }}>
               {c.badge}
             </span>
           )}
         </div>
-        <p style={{
-          margin: 0, fontSize: '12.5px', color: 'rgba(255,255,255,0.4)',
-          lineHeight: '1.4',
-        }}>
-          {c.description}
+        <p style={{ margin: 0, fontSize: '12.5px', color: 'rgba(255,255,255,0.4)', lineHeight: '1.4' }}>
+          {conn?.metadata?.email ?? conn?.metadata?.login ?? c.description}
         </p>
       </div>
     </div>

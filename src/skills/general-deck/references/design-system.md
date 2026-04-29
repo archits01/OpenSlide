@@ -529,19 +529,27 @@ White cards without both an icon AND a secondary metric box look incomplete. Alw
 
 ## SVG Chart Recipes
 
-### Bar Chart — Height Calculation (CRITICAL)
-```
-bar height = (data_value / max_value) * chart_height_px
+**Chart selection decision tree:**
+- Data has a time axis (years, quarters, months)? → **Line Chart**
+- Data shows proportions, market share, or composition? → **Donut Chart**
+- Data ranks items with text labels (countries, products, segments)? → **Horizontal Bar Chart**
+- Everything else (categorical comparison, metrics) → **Bar Chart** (default)
 
-Example: If max revenue is $15M and a year shows $7.5M:
-  chart_height = 200px
+Only these 4 chart types are supported. Generate the chart SVG/HTML directly in the slide content — there is no external chart renderer.
+
+### 1. Bar Chart
+
+**Height Calculation (CRITICAL):**
+```
+bar_height = (data_value / max_value) * chart_height_px
+
+Example: max=$15M, value=$7.5M, chart_height=200px
   height = (7.5 / 15) * 200 = 100px  ← CORRECT
   height = 7.5px                      ← WRONG (never use raw values as pixels)
 ```
 
-Always calculate the max across all data points first, then compute each bar as a proportion. Y-axis shows 4-5 gridlines from 0 to max with proper unit labels (B, M, K).
+Always find max across all data points first. Y-axis: 4-5 gridlines from 0 to max with unit labels (B, M, K).
 
-### Bar Chart Template
 ```html
 <div style="position:relative;height:200px;display:flex;align-items:flex-end;gap:16px;padding-left:44px;">
   <!-- Y-axis labels -->
@@ -555,92 +563,156 @@ Always calculate the max across all data points first, then compute each bar as 
   <div style="position:absolute;left:40px;right:0;top:0;height:1px;background:#F1F5F9;"></div>
   <div style="position:absolute;left:40px;right:0;top:33%;height:1px;background:#F1F5F9;"></div>
   <div style="position:absolute;left:40px;right:0;top:66%;height:1px;background:#F1F5F9;"></div>
-  <!-- Bar group -->
+  <!-- Repeat this bar group per category -->
   <div style="display:flex;align-items:flex-end;gap:4px;flex:1;justify-content:center;position:relative;">
-    <div style="width:18px;background:#E2E8F0;border-radius:3px 3px 0 0;" data-height="calc from formula"></div>
-    <div style="width:18px;background:var(--slide-accent);border-radius:3px 3px 0 0;" data-height="calc from formula"></div>
+    <div style="width:18px;background:#E2E8F0;border-radius:3px 3px 0 0;height:100px;"></div>
+    <div style="width:18px;background:var(--slide-accent);border-radius:3px 3px 0 0;height:150px;"></div>
     <div style="position:absolute;bottom:-20px;font-size:10px;color:#94A3B8;text-align:center;width:100%;">2024</div>
   </div>
 </div>
 ```
 
-Bar colors: Primary metric = `#15803D`, Secondary/comparison = `#E2E8F0`, Negative = `#EF4444`.
+Bar colors: Primary = `var(--slide-accent)`, Secondary/comparison = `#E2E8F0`, Negative = `#EF4444`.
 
-### Donut Chart
+### 2. Donut Chart
+
+**Math (CRITICAL — get this right):**
 ```
-r=50, cx/cy=75, circumference = 2 * pi * 50 = 314.2
-Segment X%: stroke-dasharray = "(X/100) * 314.2, 314.2"
-Offset = negative sum of prior dasharray values (stroke-dashoffset)
-Rotation: transform="rotate(-90 75 75)" — starts from 12 o'clock
-Stroke-width: 20-22
+r=65, cx/cy=100, circumference = 2 * pi * 65 = 408.4
+Segment X%: stroke-dasharray = "(X / 100) * 408.4, 408.4"
+Offset = negative sum of ALL prior segment dasharray values
+Rotation: transform="rotate(-90 100 100)" — starts from 12 o'clock
+Stroke-width: 28
 ```
 
+**ALWAYS use this flex layout — donut left, legend right:**
 ```html
-<svg viewBox="0 0 150 150" width="130" height="130">
-  <!-- Primary segment: 72% = 226.2 -->
-  <circle cx="75" cy="75" r="50" fill="none" stroke="#0F172A" stroke-width="22"
-    stroke-dasharray="226.2 314.2" stroke-dashoffset="0" transform="rotate(-90 75 75)"/>
-  <!-- Secondary: 18% = 56.6, offset=-226.2 -->
-  <circle cx="75" cy="75" r="50" fill="none" stroke="var(--slide-accent)" stroke-width="22"
-    stroke-dasharray="56.6 314.2" stroke-dashoffset="-226.2" transform="rotate(-90 75 75)"/>
-  <!-- Remaining: 10% = 31.4, offset=-282.8 -->
-  <circle cx="75" cy="75" r="50" fill="none" stroke="#E2E8F0" stroke-width="22"
-    stroke-dasharray="31.4 314.2" stroke-dashoffset="-282.8" transform="rotate(-90 75 75)"/>
-  <!-- Center label -->
-  <text x="75" y="72" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="10" fill="#94A3B8">SaaS</text>
-  <text x="75" y="88" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-size="20" font-weight="800" fill="#0F172A">72%</text>
-</svg>
-```
-
-### Diverging Bar Chart (CSS grid, not SVG)
-```html
-<div style="display:grid;grid-template-columns:90px 1fr 1fr;align-items:center;row-gap:12px;">
-  <!-- Positive: bar in right column -->
-  <div style="text-align:right;font-size:12px;font-weight:600;padding-right:12px;">Enterprise</div>
-  <div></div>
-  <div style="display:flex;align-items:center;gap:8px;">
-    <div style="width:60px;height:22px;background:var(--slide-accent);border-radius:0 6px 6px 0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#FFFFFF;">+12%</div>
-    <span style="font-size:11px;color:var(--slide-accent);font-weight:600;">Above target</span>
+<div style="display:flex;align-items:center;gap:32px;">
+  <!-- Donut SVG — 200x200, larger and clearer than old 130x130 -->
+  <svg viewBox="0 0 200 200" width="200" height="200">
+    <!-- Segment 1: 55% = 224.6, offset=0 -->
+    <circle cx="100" cy="100" r="65" fill="none" stroke="var(--slide-accent)" stroke-width="28"
+      stroke-dasharray="224.6 408.4" stroke-dashoffset="0" transform="rotate(-90 100 100)"/>
+    <!-- Segment 2: 25% = 102.1, offset=-224.6 -->
+    <circle cx="100" cy="100" r="65" fill="none" stroke="#0F172A" stroke-width="28"
+      stroke-dasharray="102.1 408.4" stroke-dashoffset="-224.6" transform="rotate(-90 100 100)"/>
+    <!-- Segment 3: 20% = 81.7, offset=-326.7 -->
+    <circle cx="100" cy="100" r="65" fill="none" stroke="#E2E8F0" stroke-width="28"
+      stroke-dasharray="81.7 408.4" stroke-dashoffset="-326.7" transform="rotate(-90 100 100)"/>
+    <!-- Center label -->
+    <text x="100" y="94" text-anchor="middle" font-family="DM Sans,sans-serif" font-size="12" fill="#94A3B8">Total</text>
+    <text x="100" y="114" text-anchor="middle" font-family="Plus Jakarta Sans,sans-serif" font-size="24" font-weight="800" fill="#0F172A">$50M</text>
+  </svg>
+  <!-- Legend — ALWAYS include this, never skip -->
+  <div style="display:flex;flex-direction:column;gap:12px;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:var(--slide-accent);flex-shrink:0;"></div>
+      <span style="font-size:14px;font-weight:600;color:#0F172A;">SaaS Revenue</span>
+      <span style="font-size:14px;color:#94A3B8;margin-left:auto;">55%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:#0F172A;flex-shrink:0;"></div>
+      <span style="font-size:14px;font-weight:600;color:#0F172A;">Services</span>
+      <span style="font-size:14px;color:#94A3B8;margin-left:auto;">25%</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:12px;height:12px;border-radius:3px;background:#E2E8F0;flex-shrink:0;"></div>
+      <span style="font-size:14px;font-weight:600;color:#0F172A;">Other</span>
+      <span style="font-size:14px;color:#94A3B8;margin-left:auto;">20%</span>
+    </div>
   </div>
-  <!-- Negative: bar in left column -->
-  <div style="text-align:right;font-size:12px;font-weight:600;padding-right:12px;">SMB</div>
-  <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;">
-    <span style="font-size:11px;color:#EF4444;font-weight:600;">-8%</span>
-    <div style="width:40px;height:22px;background:#EF4444;border-radius:6px 0 0 6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#FFFFFF;">Under</div>
-  </div>
-  <div></div>
 </div>
 ```
 
-### Mini Trend Bars (for compact projections)
-```html
-<div style="display:flex;align-items:flex-end;gap:6px;height:60px;">
-  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-    <div style="width:100%;background:#E2E8F0;border-radius:3px 3px 0 0;height:30px;"></div>
-    <span style="font-size:9px;color:#94A3B8;">FY24</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-    <div style="width:100%;background:var(--slide-accent);border-radius:3px 3px 0 0;height:45px;"></div>
-    <span style="font-size:9px;color:#94A3B8;">FY25</span>
-  </div>
-  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
-    <div style="width:100%;background:var(--slide-accent);border-radius:3px 3px 0 0;height:60px;"></div>
-    <span style="font-size:9px;color:var(--slide-accent);font-weight:600;">FY26</span>
-  </div>
-</div>
-<!-- Target reference line overlay if needed -->
+Donut colors: Use `var(--slide-accent)` for largest segment, `#0F172A` for second, `#E2E8F0` for third. Max 4-5 segments — if more, group small ones as "Other".
+
+### 3. Line Chart
+
+**Point Calculation:**
+```
+chart_width=500, chart_height=180, padding_left=44, padding_bottom=24
+x = padding_left + index * (chart_width / (num_points - 1))
+y = chart_height - (value / max_value) * (chart_height - padding_bottom)
+
+Example: 5 data points, max=$20M, point[2]=$12M
+  x = 44 + 2 * (500 / 4) = 294
+  y = 180 - (12/20) * 156 = 86.4
 ```
 
-### Growth Ramp Bar
 ```html
-<div style="background:#1E293B;height:8px;border-radius:4px;overflow:hidden;margin-top:auto;">
-  <div style="height:8px;border-radius:4px;background:linear-gradient(90deg,#15803D,#4ADE80);width:65%;"></div>
-</div>
-<div style="display:flex;justify-content:space-between;margin-top:4px;">
-  <span style="font-size:10px;color:#94A3B8;">Y1</span>
-  <span style="font-size:10px;color:var(--slide-accent-light);font-weight:600;">Y5</span>
+<div style="position:relative;height:200px;padding-left:44px;">
+  <!-- Y-axis labels -->
+  <div style="position:absolute;left:0;top:0;bottom:24px;display:flex;flex-direction:column;justify-content:space-between;">
+    <span style="font-size:10px;color:#94A3B8;">$20M</span>
+    <span style="font-size:10px;color:#94A3B8;">$10M</span>
+    <span style="font-size:10px;color:#94A3B8;">$0</span>
+  </div>
+  <!-- Gridlines -->
+  <div style="position:absolute;left:40px;right:0;top:0;height:1px;background:#F1F5F9;"></div>
+  <div style="position:absolute;left:40px;right:0;top:50%;height:1px;background:#F1F5F9;"></div>
+  <!-- SVG line + dots -->
+  <svg viewBox="0 0 520 180" width="100%" height="176" style="position:absolute;left:40px;top:0;">
+    <!-- Area fill (optional — subtle gradient under the line) -->
+    <polygon points="0,180 0,126 130,90 260,54 390,36 500,18 500,180"
+      fill="var(--slide-accent)" opacity="0.06"/>
+    <!-- Line -->
+    <polyline points="0,126 130,90 260,54 390,36 500,18"
+      fill="none" stroke="var(--slide-accent)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Data point dots -->
+    <circle cx="0" cy="126" r="4" fill="var(--slide-accent)"/>
+    <circle cx="130" cy="90" r="4" fill="var(--slide-accent)"/>
+    <circle cx="260" cy="54" r="4" fill="var(--slide-accent)"/>
+    <circle cx="390" cy="36" r="4" fill="var(--slide-accent)"/>
+    <circle cx="500" cy="18" r="4" fill="var(--slide-accent)"/>
+  </svg>
+  <!-- X-axis labels -->
+  <div style="position:absolute;bottom:0;left:44px;right:0;display:flex;justify-content:space-between;">
+    <span style="font-size:10px;color:#94A3B8;">2020</span>
+    <span style="font-size:10px;color:#94A3B8;">2021</span>
+    <span style="font-size:10px;color:#94A3B8;">2022</span>
+    <span style="font-size:10px;color:#94A3B8;">2023</span>
+    <span style="font-size:10px;color:#94A3B8;">2024</span>
+  </div>
 </div>
 ```
+
+Line colors: Primary = `var(--slide-accent)`, Secondary line = `#94A3B8` (dashed: `stroke-dasharray="6,4"`).
+
+### 4. Horizontal Bar Chart
+
+**Width Calculation:** `bar_width = (value / max_value) * 100%`
+
+```html
+<div style="display:flex;flex-direction:column;gap:14px;">
+  <!-- Repeat per item -->
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:13px;font-weight:600;color:#0F172A;width:100px;text-align:right;flex-shrink:0;">United States</span>
+    <div style="flex:1;background:#F1F5F9;border-radius:6px;height:26px;overflow:hidden;">
+      <div style="height:100%;width:85%;background:var(--slide-accent);border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+        <span style="font-size:11px;font-weight:700;color:#FFFFFF;">$42.5M</span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:13px;font-weight:600;color:#0F172A;width:100px;text-align:right;flex-shrink:0;">Europe</span>
+    <div style="flex:1;background:#F1F5F9;border-radius:6px;height:26px;overflow:hidden;">
+      <div style="height:100%;width:52%;background:var(--slide-accent);border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+        <span style="font-size:11px;font-weight:700;color:#FFFFFF;">$26.0M</span>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <span style="font-size:13px;font-weight:600;color:#0F172A;width:100px;text-align:right;flex-shrink:0;">APAC</span>
+    <div style="flex:1;background:#F1F5F9;border-radius:6px;height:26px;overflow:hidden;">
+      <div style="height:100%;width:30%;background:#94A3B8;border-radius:6px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;">
+        <span style="font-size:11px;font-weight:700;color:#FFFFFF;">$15.0M</span>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+Bar colors: Top item = `var(--slide-accent)`, remaining = `#94A3B8`. Highlight a specific bar with `var(--slide-accent)` to draw attention.
 
 ---
 

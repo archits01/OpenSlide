@@ -26,9 +26,9 @@ export function AuthModal({ open, onClose, onSuccess }: AuthModalProps) {
 
   // Lazy Supabase ref — avoids calling createClient() during SSR prerender
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   async function handleSignIn(event: React.FormEvent<HTMLFormElement>) {

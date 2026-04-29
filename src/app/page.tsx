@@ -4,10 +4,11 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { InputToolbar, type PendingAttachment } from "@/components/shared/InputToolbar";
+import { KitPicker } from "@/components/shared/KitPicker";
 import { AuthModal } from "@/components/shared/AuthModal";
 import { createClient } from "@/lib/supabase/client";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ArrowUp02Icon, Settings01Icon, Logout03Icon, Cancel01Icon, ArrowLeft02Icon, ArrowRight02Icon } from "@hugeicons/core-free-icons";
+import { ArrowUp02Icon, Settings01Icon, Logout03Icon, ArrowUpRight01Icon, Cancel01Icon, ArrowLeft02Icon, ArrowRight02Icon } from "@hugeicons/core-free-icons";
 import { buildSlideHtml } from "@/lib/slide-html";
 import type { ThemeName } from "@/agent/tools/set-theme";
 import { motion, AnimatePresence } from "framer-motion";
@@ -125,11 +126,14 @@ interface TemplateSlide {
   layout: string;
 }
 
+type TemplateMode = "slides" | "docs" | "sheets" | "website";
+
 interface Template {
   id: string;
   slug: string;
   title: string;
   description?: string | null;
+  mode: TemplateMode;
   category: string;
   tags?: string[];
   bg: string;
@@ -490,15 +494,69 @@ function TemplateCard({
 
 const PENDING_PROMPT_KEY = "openslide-pending-prompt";
 
+// ─── Suggestion chips ─────────────────────────────────────────────────────
+// Mode-aware quick-idea chips that render below the prompt bar on the home hero.
+// Clicking a chip prefills the textarea; "More Ideas" scrolls to the styles gallery.
+
+type ChipIcon = "deck" | "chart" | "spark" | "doc" | "spec" | "list" | "grid" | "target" | "browser" | "tag" | "caret";
+
+// Mode-aware hero headline + subtitle. Swapped with a fadeUp/blur transition when tabs change.
+const HERO_COPY: Record<TemplateMode, { title: string; sub: string }> = {
+  slides:  { title: "Great slides start here",        sub: "One prompt is all it takes — OpenSlide builds it for you." },
+  docs:    { title: "Write, drafted in a prompt",     sub: "Briefs, reports, memos — turned around in seconds." },
+  sheets:  { title: "Spreadsheets, without the rows", sub: "Describe the analysis. We'll wire the cells." },
+  website: { title: "Ship an app in a prompt",        sub: "Landing pages, tools, microsites — live in minutes." },
+};
+
+const SUGGESTIONS: Record<TemplateMode, { label: string; icon: ChipIcon }[]> = {
+  slides:  [{ label: "Pitch Deck",   icon: "deck"    }, { label: "Board Update",  icon: "chart"   }, { label: "Sales Playbook", icon: "spark" }],
+  docs:    [{ label: "One-Pager",    icon: "doc"     }, { label: "PRD",           icon: "spec"    }, { label: "Meeting Notes",  icon: "list"  }],
+  sheets:  [{ label: "Runway Model", icon: "chart"   }, { label: "Hiring Plan",   icon: "grid"    }, { label: "OKR Tracker",    icon: "target"}],
+  website: [{ label: "Landing Page", icon: "browser" }, { label: "Portfolio",     icon: "spark"   }, { label: "Pricing Page",   icon: "tag"   }],
+};
+
+function ChipGlyph({ name }: { name: ChipIcon }) {
+  const stroke = { fill: "none" as const, stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  const common = { width: 14, height: 14, viewBox: "0 0 24 24", ...stroke, style: { opacity: 0.82 } };
+  switch (name) {
+    case "deck":
+      return <svg {...common}><rect x="3" y="4" width="18" height="12" rx="2" /><path d="M8 20h8" /><path d="M12 16v4" /></svg>;
+    case "chart":
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 3v9l6 3" /></svg>;
+    case "spark":
+      return <svg {...common}><path d="M12 3v4" /><path d="M12 17v4" /><path d="M3 12h4" /><path d="M17 12h4" /><path d="M5.6 5.6l2.8 2.8" /><path d="M15.6 15.6l2.8 2.8" /><path d="M5.6 18.4l2.8-2.8" /><path d="M15.6 8.4l2.8-2.8" /></svg>;
+    case "doc":
+      return <svg {...common}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>;
+    case "spec":
+      return <svg {...common}><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8" /><path d="M8 12h8" /><path d="M8 16h5" /></svg>;
+    case "list":
+      return <svg {...common}><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line x1="8" y1="18" x2="21" y2="18" /><circle cx="4" cy="6" r="1.2" /><circle cx="4" cy="12" r="1.2" /><circle cx="4" cy="18" r="1.2" /></svg>;
+    case "grid":
+      return <svg {...common}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /></svg>;
+    case "target":
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></svg>;
+    case "browser":
+      return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18" /></svg>;
+    case "tag":
+      return <svg {...common}><path d="M20 12l-8 8-9-9V3h8z" /><circle cx="7" cy="7" r="1.5" /></svg>;
+    case "caret":
+      return <svg {...common} strokeWidth={2.2}><polyline points="6 9 12 15 18 9" /></svg>;
+  }
+}
+
 // Isolated so useSearchParams() stays inside a Suspense boundary
-function ParamWatcher({ onAuth }: { onAuth: () => void }) {
+function ParamWatcher({ onAuth, onUpgrade }: { onAuth: () => void; onUpgrade: () => void }) {
   const searchParams = useSearchParams();
   useEffect(() => {
     if (searchParams.get("auth") === "1") {
       onAuth();
       window.history.replaceState({}, "", "/");
     }
-  }, [searchParams, onAuth]);
+    if (searchParams.get("upgrade") === "1") {
+      onUpgrade();
+      window.history.replaceState({}, "", "/");
+    }
+  }, [searchParams, onAuth, onUpgrade]);
   return null;
 }
 
@@ -511,19 +569,23 @@ export default function ExplorePage() {
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [activeMode, setActiveMode] = useState<TemplateMode>("slides");
   // Pre-generated sessionId so uploads work before the user hits send
   const [preSessionId, setPreSessionId] = useState(() => crypto.randomUUID());
+  const [selectedBrandKitId, setSelectedBrandKitId] = useState<string | null>(null);
   const [visibleTemplates, setVisibleTemplates] = useState(8);
   const [detailTemplate, setDetailTemplate] = useState<Template | null>(null);
   const inputToolbarRef = useRef<HTMLDivElement>(null);
+  const stylesRef = useRef<HTMLDivElement>(null);
+  const [chipPrefill, setChipPrefill] = useState<{ text: string; nonce: number } | null>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
   const { profile, refresh: refreshProfile } = useProfile();
 
   // Lazy ref — createClient() only ever called client-side (avoids SSR prerender crash)
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   // Resolve current auth state and listen for changes
@@ -538,7 +600,6 @@ export default function ExplorePage() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
       if (event === "SIGNED_IN") {
-        // User just signed in — bust the stale null cache and fetch real profile
         clearProfileCache();
         refreshProfile();
       } else if (!session?.user) {
@@ -558,31 +619,49 @@ export default function ExplorePage() {
       .catch(() => {});
   }, []);
 
-  function handleSend(message: string, options?: { deepResearch?: boolean; docsMode?: boolean; attachments?: PendingAttachment[] }) {
+  function handleSend(message: string, options?: { deepResearch?: boolean; docsMode?: boolean; sheetsMode?: boolean; websiteMode?: boolean; attachments?: PendingAttachment[] }) {
     if (!user) {
       sessionStorage.setItem(PENDING_PROMPT_KEY, message);
       if (options?.deepResearch) sessionStorage.setItem("openslide-pending-deep-research", "true");
       if (options?.docsMode) sessionStorage.setItem("openslide-pending-docs-mode", "true");
+      if (options?.sheetsMode) sessionStorage.setItem("openslide-pending-sheets-mode", "true");
+      if (options?.websiteMode) sessionStorage.setItem("openslide-pending-website-mode", "true");
       // Persist ready attachment metadata so auth → navigate flow can pick them up
       const readyAtts = (options?.attachments ?? []).filter((a) => a.status === "ready");
       if (readyAtts.length) sessionStorage.setItem(`pending-attachments:${preSessionId}`, JSON.stringify(readyAtts));
       setAuthOpen(true);
       return;
     }
-    navigateToEditor(message, options?.deepResearch, options?.docsMode, options?.attachments);
+    navigateToEditor(message, options?.deepResearch, options?.docsMode, options?.sheetsMode, options?.websiteMode, options?.attachments);
   }
 
-  function navigateToEditor(message: string, deepResearch?: boolean, docsMode?: boolean, attachments?: PendingAttachment[]) {
+  function navigateToEditor(message: string, deepResearch?: boolean, docsMode?: boolean, sheetsMode?: boolean, websiteMode?: boolean, attachments?: PendingAttachment[]) {
     const id = preSessionId;
     sessionStorage.setItem(`pending-prompt:${id}`, message);
     if (deepResearch) sessionStorage.setItem(`pending-deep-research:${id}`, "true");
     if (docsMode) sessionStorage.setItem(`pending-docs-mode:${id}`, "true");
+    if (sheetsMode) sessionStorage.setItem(`pending-sheets-mode:${id}`, "true");
+    if (websiteMode) sessionStorage.setItem(`pending-website-mode:${id}`, "true");
+    // Brand-kit override picked from the home picker. The editor reads this on
+    // mount and PATCHes the session before the first message goes out, so the
+    // first turn already runs under the chosen kit.
+    if (selectedBrandKitId) sessionStorage.setItem(`pending-brand-kit:${id}`, selectedBrandKitId);
     // If user picked a template, persist its slug so the editor can skip the LLM classifier
     if (selectedTemplate?.slug) sessionStorage.setItem(`pending-template-slug:${id}`, selectedTemplate.slug);
     const readyAtts = (attachments ?? []).filter((a) => a.status === "ready");
     if (readyAtts.length) sessionStorage.setItem(`pending-attachments:${id}`, JSON.stringify(readyAtts));
     // Rotate preSessionId so next upload on the explore page gets a fresh bucket
     setPreSessionId(crypto.randomUUID());
+    // Website mode needs cross-origin isolation for SharedArrayBuffer (WebContainer).
+    // That's only granted when the page loads fresh — SPA transitions from a
+    // non-isolated opener (this page) leave the editor without SAB, which is
+    // why users had to hard-reload to see the live preview. Force a full page
+    // load for website sessions; keep SPA transition for slides/docs/sheets
+    // because those don't use WebContainer and full loads would be slower UX.
+    if (websiteMode) {
+      window.location.assign(`/editor/${id}`);
+      return;
+    }
     router.push(`/editor/${id}`);
   }
 
@@ -599,14 +678,18 @@ export default function ExplorePage() {
     const pending = sessionStorage.getItem(PENDING_PROMPT_KEY);
     const pendingDeep = sessionStorage.getItem("openslide-pending-deep-research") === "true";
     const pendingDocs = sessionStorage.getItem("openslide-pending-docs-mode") === "true";
+    const pendingSheets = sessionStorage.getItem("openslide-pending-sheets-mode") === "true";
+    const pendingWebsite = sessionStorage.getItem("openslide-pending-website-mode") === "true";
     const pendingAttsRaw = sessionStorage.getItem(`pending-attachments:${preSessionId}`);
     const pendingAtts: PendingAttachment[] = pendingAttsRaw ? JSON.parse(pendingAttsRaw) : [];
     sessionStorage.removeItem(PENDING_PROMPT_KEY);
     sessionStorage.removeItem("openslide-pending-deep-research");
     sessionStorage.removeItem("openslide-pending-docs-mode");
+    sessionStorage.removeItem("openslide-pending-sheets-mode");
+    sessionStorage.removeItem("openslide-pending-website-mode");
     // Don't remove pending-attachments here — navigateToEditor will use it and the editor reads it
     if (pending) {
-      navigateToEditor(pending, pendingDeep, pendingDocs, pendingAtts);
+      navigateToEditor(pending, pendingDeep, pendingDocs, pendingSheets, pendingWebsite, pendingAtts);
     }
   }
 
@@ -632,6 +715,7 @@ export default function ExplorePage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [avatarOpen]);
 
+  // OSS build: no credit balance UI, no grants, no payments.
 
   return (
     <div className="flex h-full overflow-hidden" style={{ background: "var(--app-bg)" }}>
@@ -808,16 +892,34 @@ export default function ExplorePage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.7, ease: [0.25, 1, 0.5, 1] }}
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
                 >
-                  <h1
-                    className="text-[28px] md:text-[42px] font-semibold tracking-[-0.04em] mb-3.5"
-                    style={{ color: "white", lineHeight: 1.1, textShadow: "0 4px 28px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.4)" }}
-                  >
-                    Great slides start here
-                  </h1>
-                  <p className="text-[14px] md:text-[16.5px]" style={{ color: "rgba(255,255,255,0.9)", lineHeight: 1.6, textShadow: "0 2px 14px rgba(0,0,0,0.5)" }}>
-                    One prompt is all it takes — OpenSlide builds it for you.
-                  </p>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.h1
+                      key={HERO_COPY[activeMode].title}
+                      className="text-[28px] md:text-[42px] font-semibold tracking-[-0.04em] mb-3.5"
+                      style={{ color: "white", lineHeight: 1.1, textShadow: "0 4px 28px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.4)" }}
+                      initial={{ opacity: 0, y: 6, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+                      transition={{ duration: 0.5, ease: [0.2, 1, 0.4, 1] }}
+                    >
+                      {HERO_COPY[activeMode].title}
+                    </motion.h1>
+                  </AnimatePresence>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.p
+                      key={HERO_COPY[activeMode].sub}
+                      className="text-[14px] md:text-[16.5px]"
+                      style={{ color: "rgba(255,255,255,0.9)", lineHeight: 1.6, textShadow: "0 2px 14px rgba(0,0,0,0.5)" }}
+                      initial={{ opacity: 0, y: 6, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+                      transition={{ duration: 0.5, ease: [0.2, 1, 0.4, 1], delay: 0.04 }}
+                    >
+                      {HERO_COPY[activeMode].sub}
+                    </motion.p>
+                  </AnimatePresence>
                 </motion.div>
 
                 <motion.div
@@ -851,60 +953,214 @@ export default function ExplorePage() {
                       onClearTemplate={() => setSelectedTemplate(null)}
                       animatedPlaceholder
                       focusAnimation
+                      showModeTabs
+                      prefill={chipPrefill}
+                      onModeChange={(m) => {
+                        if (m === activeMode) return;
+                        setActiveMode(m);
+                        setVisibleTemplates(8);
+                      }}
+                      leftAccessory={
+                        <KitPicker
+                          value={selectedBrandKitId}
+                          onChange={setSelectedBrandKitId}
+                          compact
+                        />
+                      }
                     />
                   </div>
+                </motion.div>
+
+                {/* ── Suggestion chips — mode-aware, clicking prefills the textarea ── */}
+                <motion.div
+                  className="w-full flex flex-wrap items-center justify-center"
+                  style={{ gap: 10, marginTop: -6 }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.3, ease: [0.25, 1, 0.5, 1] }}
+                >
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={activeMode}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                      className="flex flex-wrap items-center justify-center"
+                      style={{ gap: 10 }}
+                    >
+                      {SUGGESTIONS[activeMode].map((s) => (
+                        <button
+                          key={`${activeMode}-${s.label}`}
+                          onClick={() => {
+                            setChipPrefill({ text: `${s.label}: `, nonce: Date.now() });
+                          }}
+                          className="chip-sg inline-flex items-center"
+                          style={{
+                            gap: 8,
+                            height: 38,
+                            padding: "0 16px",
+                            borderRadius: 999,
+                            background: "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(255,255,255,0.10)",
+                            color: "rgba(255,255,255,0.75)",
+                            backdropFilter: "blur(10px)",
+                            WebkitBackdropFilter: "blur(10px)",
+                            fontSize: 13,
+                            fontWeight: 500,
+                            letterSpacing: "-0.005em",
+                            cursor: "pointer",
+                            transition: "background 180ms, border-color 180ms, color 180ms, transform 180ms",
+                            whiteSpace: "nowrap",
+                          }}
+                          onMouseEnter={(e) => {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.background = "rgba(233,30,120,0.10)";
+                            el.style.borderColor = "rgba(233,30,120,0.35)";
+                            el.style.color = "#fff";
+                            el.style.transform = "translateY(-1px)";
+                          }}
+                          onMouseLeave={(e) => {
+                            const el = e.currentTarget as HTMLButtonElement;
+                            el.style.background = "rgba(255,255,255,0.05)";
+                            el.style.borderColor = "rgba(255,255,255,0.10)";
+                            el.style.color = "rgba(255,255,255,0.75)";
+                            el.style.transform = "translateY(0)";
+                          }}
+                        >
+                          <ChipGlyph name={s.icon} />
+                          <span>{s.label}</span>
+                        </button>
+                      ))}
+                      <button
+                        key={`${activeMode}-more`}
+                        onClick={() => {
+                          stylesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }}
+                        className="chip-sg inline-flex items-center"
+                        style={{
+                          gap: 8,
+                          height: 38,
+                          padding: "0 16px",
+                          borderRadius: 999,
+                          background: "rgba(255,255,255,0.05)",
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          color: "rgba(255,255,255,0.75)",
+                          backdropFilter: "blur(10px)",
+                          WebkitBackdropFilter: "blur(10px)",
+                          fontSize: 13,
+                          fontWeight: 500,
+                          letterSpacing: "-0.005em",
+                          cursor: "pointer",
+                          transition: "background 180ms, border-color 180ms, color 180ms, transform 180ms",
+                          whiteSpace: "nowrap",
+                        }}
+                        onMouseEnter={(e) => {
+                          const el = e.currentTarget as HTMLButtonElement;
+                          el.style.background = "rgba(233,30,120,0.10)";
+                          el.style.borderColor = "rgba(233,30,120,0.35)";
+                          el.style.color = "#fff";
+                          el.style.transform = "translateY(-1px)";
+                        }}
+                        onMouseLeave={(e) => {
+                          const el = e.currentTarget as HTMLButtonElement;
+                          el.style.background = "rgba(255,255,255,0.05)";
+                          el.style.borderColor = "rgba(255,255,255,0.10)";
+                          el.style.color = "rgba(255,255,255,0.75)";
+                          el.style.transform = "translateY(0)";
+                        }}
+                      >
+                        <span>More Ideas</span>
+                        <ChipGlyph name="caret" />
+                      </button>
+                    </motion.div>
+                  </AnimatePresence>
                 </motion.div>
               </div>
             </div>
           </div>
 
-          {/* ── Styles section ── */}
-          <div className="pb-16 mx-auto px-4 md:px-8" style={{
-            maxWidth: 1100, width: "100%", paddingTop: 12, position: "relative", zIndex: 5,
-          }}>
-            {/* Header */}
-            <motion.div
-              className="flex items-center justify-between mb-5"
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.6, ease: [0.25, 1, 0.5, 1] }}
-            >
-              <h2
-                className="text-[20px] md:text-[26px] font-semibold"
-                style={{ color: "white", letterSpacing: "-0.015em" }}
-              >
-                Styles{" "}
-                <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>
-                  | Created in OpenSlide
-                </span>
-              </h2>
-            </motion.div>
+          {/* ── Styles section — mode-aware ── */}
+          {(() => {
+            const EMPTY_COPY: Record<TemplateMode, { label: string; blurb: string }> = {
+              slides:  { label: "presentation",   blurb: "More slide styles are on the way." },
+              docs:    { label: "document",       blurb: "Doc styles coming soon." },
+              sheets:  { label: "sheet",          blurb: "Sheet styles coming soon." },
+              website: { label: "app",            blurb: "App styles coming soon." },
+            };
+            const filtered = templates.filter((t) => (t.mode ?? "slides") === activeMode);
+            const visible = filtered.slice(0, visibleTemplates);
+            return (
+              <>
+                <div ref={stylesRef} className="pb-16 mx-auto px-4 md:px-8" style={{
+                  maxWidth: 1100, width: "100%", paddingTop: 12, position: "relative", zIndex: 5,
+                  scrollMarginTop: 24,
+                }}>
+                  {/* Header */}
+                  <motion.div
+                    className="flex items-center justify-between mb-5"
+                    initial={{ opacity: 0, y: 16 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: "-40px" }}
+                    transition={{ duration: 0.6, ease: [0.25, 1, 0.5, 1] }}
+                  >
+                    <h2
+                      className="text-[20px] md:text-[26px] font-semibold"
+                      style={{ color: "white", letterSpacing: "-0.015em" }}
+                    >
+                      Styles{" "}
+                      <span style={{ color: "rgba(255,255,255,0.4)", fontWeight: 400 }}>
+                        | Created in OpenSlide
+                      </span>
+                    </h2>
+                  </motion.div>
 
-            {/* Styles grid — 4 per row */}
-            <div className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4">
-              {templates.slice(0, visibleTemplates).map((template, i) => (
-                <motion.div
-                  key={template.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: Math.min(i, 3) * 0.06, ease: [0.25, 1, 0.5, 1] }}
-                >
-                  <TemplateCard
-                    template={template}
-                    onUseTemplate={handleUseTemplate}
-                    onOpenDetail={(t) => setDetailTemplate(t)}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          </div>
+                  {/* Grid (animates between modes via key) OR empty state */}
+                  {filtered.length === 0 ? (
+                    <motion.div
+                      key={`empty-${activeMode}`}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
+                      className="flex flex-col items-center justify-center text-center py-12 md:py-16"
+                      style={{
+                        borderRadius: 16,
+                        border: "1px dashed rgba(255,255,255,0.10)",
+                        background: "rgba(255,255,255,0.02)",
+                      }}
+                    >
+                      <p style={{ color: "rgba(255,255,255,0.8)", fontSize: 15, fontWeight: 500, letterSpacing: "-0.01em" }}>
+                        No {EMPTY_COPY[activeMode].label} styles yet
+                      </p>
+                      <p style={{ color: "rgba(255,255,255,0.45)", fontSize: 13.5, marginTop: 6 }}>
+                        {EMPTY_COPY[activeMode].blurb}
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <div key={activeMode} className="grid gap-3 md:gap-4 grid-cols-2 md:grid-cols-4">
+                      {visible.map((template, i) => (
+                        <motion.div
+                          key={template.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.4, delay: Math.min(i, 3) * 0.06, ease: [0.25, 1, 0.5, 1] }}
+                        >
+                          <TemplateCard
+                            template={template}
+                            onUseTemplate={handleUseTemplate}
+                            onOpenDetail={(t) => setDetailTemplate(t)}
+                          />
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-          {/* ── Load More ── */}
-          {visibleTemplates < templates.length && (
-            <div className="flex justify-center pb-16 pt-4" style={{ position: "relative", zIndex: 5 }}>
-              <button
-                onClick={() => setVisibleTemplates((v) => Math.min(v + 4, templates.length))}
+                {/* ── Load More ── */}
+                {visibleTemplates < filtered.length && (
+                  <div className="flex justify-center pb-16 pt-4" style={{ position: "relative", zIndex: 5 }}>
+                    <button
+                      onClick={() => setVisibleTemplates((v) => Math.min(v + 4, filtered.length))}
                 className="flex items-center gap-2 h-10 px-7 rounded-full text-[13.5px] font-medium"
                 style={{
                   background: "transparent",
@@ -921,11 +1177,14 @@ export default function ExplorePage() {
                   e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)";
                   e.currentTarget.style.color = "rgba(255,255,255,0.6)";
                 }}
-              >
-                Load more
-              </button>
-            </div>
-          )}
+                    >
+                      Load more
+                    </button>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* ── Footer ── */}
           <div style={{ padding: "16px 40px 16px" }}>
@@ -949,7 +1208,7 @@ export default function ExplorePage() {
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {/* Reads ?auth=1 set by middleware when unauthenticated user hits /editor */}
       <Suspense>
-        <ParamWatcher onAuth={() => setAuthOpen(true)} />
+        <ParamWatcher onAuth={() => setAuthOpen(true)} onUpgrade={() => {}} />
       </Suspense>
     </div>
   );

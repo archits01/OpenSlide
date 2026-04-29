@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -8,12 +8,35 @@ import { Cancel01Icon, Mail01Icon, Camera01Icon } from "@hugeicons/core-free-ico
 import { createClient } from "@/lib/supabase/client";
 import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { useProfile } from "@/lib/hooks/useProfile";
+
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
 }
 
+const TABS = ["Profile", "Connections"] as const;
+type Tab = (typeof TABS)[number];
+
 // ─── Gooey SVG filter ─────────────────────────────────────────────────────────
+function GooeyFilter() {
+  return (
+    <svg className="hidden absolute" aria-hidden>
+      <defs>
+        <filter id="settings-goo">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
+          <feColorMatrix
+            in="blur"
+            type="matrix"
+            values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -9"
+            result="goo"
+          />
+          <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+        </filter>
+      </defs>
+    </svg>
+  );
+}
+
 // ─── Profile Tab ──────────────────────────────────────────────────────────────
 function ProfileTab({
   profile,
@@ -278,15 +301,170 @@ function ProfileTab({
   );
 }
 
+// ─── Connections Tab ──────────────────────────────────────────────────────────
+const PROVIDERS = [
+  { id: "github", label: "GitHub", description: "Push code to GitHub repos" },
+  { id: "gmail", label: "Gmail", description: "Email decks directly from the editor" },
+  { id: "google_drive", label: "Google Drive", description: "Access your files and import documents" },
+  { id: "google_sheets", label: "Google Sheets", description: "Pull data and charts into slides" },
+];
+
+interface Connection {
+  provider: string;
+  status: "active" | "broken";
+  metadata: { email?: string; login?: string } | null;
+}
+
+function ConnectionsTab() {
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/user/connections");
+      if (res.ok) setConnections(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      if (e.origin === window.location.origin && e.data?.type === "oauth_success") {
+        setConnecting(null);
+        void load();
+      }
+    }
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [load]);
+
+  async function disconnect(provider: string) {
+    setDisconnecting(provider);
+    try {
+      await fetch("/api/user/connections", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      await load();
+    } finally {
+      setDisconnecting(null);
+    }
+  }
+
+  function connect(providerId: string) {
+    setConnecting(providerId);
+    const url = `/api/auth/connect/${providerId}?returnTo=/settings/connections`;
+    const popup = window.open(url, `oauth_${providerId}`, "width=600,height=700,left=200,top=100");
+    if (!popup) { window.location.href = url; return; }
+    // Poll for popup close in case postMessage doesn't fire
+    const timer = setInterval(() => {
+      if (popup.closed) { clearInterval(timer); setConnecting(null); void load(); }
+    }, 800);
+  }
+
+  if (loading) {
+    return <div style={{ color: "var(--text3)", fontSize: 13 }}>Loading…</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {PROVIDERS.map((p) => {
+        const conn = connections.find((c) => c.provider === p.id);
+        const isConnected = conn?.status === "active";
+        const isBroken = conn?.status === "broken";
+        const identifier = conn?.metadata?.email ?? conn?.metadata?.login;
+        const isDisconnecting = disconnecting === p.id;
+        const isConnecting = connecting === p.id;
+
+        return (
+          <div
+            key={p.id}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 14px", borderRadius: 10,
+              border: "1px solid var(--border)", background: "var(--bg)",
+              marginBottom: 8,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 500, color: "var(--text)" }}>{p.label}</span>
+                {isBroken && (
+                  <span style={{ fontSize: 11, color: "var(--red)", background: "var(--red-soft)", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}>
+                    Reconnect needed
+                  </span>
+                )}
+                {isConnected && (
+                  <span style={{ fontSize: 11, color: "var(--green)", background: "var(--green-soft)", padding: "1px 6px", borderRadius: 4, fontWeight: 500 }}>
+                    Connected
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {identifier ? `Connected as ${identifier}` : p.description}
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+              {(isConnected || isBroken) && (
+                <button
+                  onClick={() => void disconnect(p.id)}
+                  disabled={isDisconnecting}
+                  style={{
+                    height: 28, padding: "0 10px", borderRadius: 7,
+                    border: "1px solid var(--border-strong)", background: "transparent",
+                    color: isDisconnecting ? "var(--text3)" : "var(--red)",
+                    fontSize: 12, fontWeight: 500, cursor: isDisconnecting ? "default" : "pointer",
+                    transition: "border-color 100ms",
+                  }}
+                  onMouseEnter={(e) => { if (!isDisconnecting) e.currentTarget.style.borderColor = "var(--red)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; }}
+                >
+                  {isDisconnecting ? "…" : "Disconnect"}
+                </button>
+              )}
+              {(!isConnected || isBroken) && (
+                <button
+                  onClick={() => connect(p.id)}
+                  disabled={isConnecting}
+                  style={{
+                    height: 28, padding: "0 10px", borderRadius: 7,
+                    border: "none",
+                    background: isConnecting ? "var(--bg2)" : "var(--accent)",
+                    color: isConnecting ? "var(--text3)" : "#fff",
+                    fontSize: 12, fontWeight: 500, cursor: isConnecting ? "default" : "pointer",
+                    transition: "opacity 100ms",
+                  }}
+                  onMouseEnter={(e) => { if (!isConnecting) e.currentTarget.style.opacity = "0.85"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+                >
+                  {isConnecting ? "Opening…" : isBroken ? "Reconnect" : "Connect"}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 export function SettingsModal({ open, onClose }: SettingsModalProps) {
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   const [user, setUser] = useState<User | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>("Profile");
   const { profile, refresh: refreshProfile } = useProfile();
 
   useEffect(() => {
@@ -295,8 +473,11 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) setUser(data.user);
     });
+    // Reset to Profile tab when reopening
+    setActiveTab("Profile");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
 
   if (typeof document === "undefined") return null;
 
@@ -371,21 +552,100 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
                   </button>
                 </div>
 
-                {/* Content */}
-                <div style={{ flex: 1, overflow: "auto", padding: "24px 24px 20px" }}>
-                  <ProfileTab
-                    profile={profile}
-                    user={user}
-                    refreshProfile={refreshProfile}
-                    getSupabase={getSupabase}
-                  />
+                {/* Gooey tabs + content */}
+                <GooeyFilter />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
+                  {/* Filtered layer — tab blobs + content panel share bg, gooey merges them */}
+                  <div
+                    style={{
+                      position: "absolute", inset: 0,
+                      filter: "url(#settings-goo)",
+                      pointerEvents: "none",
+                    }}
+                    aria-hidden
+                  >
+                    {/* Tab row blobs */}
+                    <div style={{ display: "flex", padding: "0 24px" }}>
+                      {TABS.map((tab) => (
+                        <div key={tab} style={{ position: "relative", flex: 1, height: 40 }}>
+                          {activeTab === tab && (
+                            <motion.div
+                              layoutId="settings-tab-blob"
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                background: "var(--bg2)",
+                                borderRadius: "10px 10px 0 0",
+                              }}
+                              transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {/* Content panel blob — same bg as active tab so gooey connects them */}
+                    <div style={{
+                      flex: 1,
+                      background: "var(--bg2)",
+                      borderRadius: "0 0 12px 12px",
+                    }} />
+                  </div>
+
+                  {/* Interactive layer — text buttons + actual content (no filter) */}
+                  <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", flex: 1, overflow: "hidden" }}>
+                    {/* Tab buttons */}
+                    <div style={{ display: "flex", padding: "0 24px", flexShrink: 0 }}>
+                      {TABS.map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setActiveTab(tab)}
+                          style={{
+                            flex: 1, height: 40, border: "none",
+                            background: "transparent", cursor: "pointer",
+                            fontSize: 13, fontWeight: activeTab === tab ? 600 : 500,
+                            letterSpacing: "-0.01em",
+                            color: activeTab === tab ? "var(--text)" : "var(--text3)",
+                            transition: "color 150ms",
+                          }}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Content area */}
+                    <div style={{ flex: 1, overflow: "auto", padding: "32px 24px 20px" }}>
+                      <AnimatePresence mode="popLayout">
+                        <motion.div
+                          key={activeTab}
+                          initial={{ opacity: 0, y: 30, filter: "blur(8px)" }}
+                          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, y: -30, filter: "blur(8px)" }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                        >
+                          {activeTab === "Profile" ? (
+                            <ProfileTab
+                              profile={profile}
+                              user={user}
+                              refreshProfile={refreshProfile}
+                              getSupabase={getSupabase}
+                            />
+                          ) : (
+                            <ConnectionsTab />
+                          )}
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+                    {/* Bottom spacing */}
+                    <div style={{ height: 16, flexShrink: 0 }} />
+                  </div>
                 </div>
-                <div style={{ height: 16, flexShrink: 0 }} />
               </motion.div>
             </div>
           </>
         )}
       </AnimatePresence>
+
     </>,
     document.body
   );

@@ -21,7 +21,7 @@ const TYPE_META: Record<string, { label: string; color: string; bg: string }> = 
   reference:  { label: "Reference",  color: "var(--text3)",        bg: "var(--bg2)" },
 };
 
-export function OutlineCard({ outline, sessionType = "slides" }: { outline: Outline; sessionType?: "slides" | "docs" }) {
+export function OutlineCard({ outline, sessionType = "slides" }: { outline: Outline; sessionType?: "slides" | "docs" | "sheets" | "website" }) {
   const isDoc = sessionType === "docs";
   // Guard against malformed outlines (e.g., doc outline with sections instead of slides)
   const items = outline.slides ?? [];

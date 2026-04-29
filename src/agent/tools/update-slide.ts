@@ -47,14 +47,30 @@ export const updateSlideTool: AgentTool = {
     required: ["slideId"],
   },
 
-  async execute(rawInput: unknown): Promise<Partial<Slide> & { slideId: string }> {
+  async execute(rawInput: unknown, _signal?: AbortSignal, context?: import("./types").AgentToolContext): Promise<Partial<Slide> & { slideId: string; changeFields?: string[]; bytesBefore?: number; bytesAfter?: number }> {
     const input = rawInput as UpdateSlideInput;
-    const changes: Partial<Slide> & { slideId: string } = { slideId: input.slideId };
-    if (input.title !== undefined) changes.title = input.title;
-    if (input.content !== undefined) changes.content = input.content;
-    if (input.layout !== undefined) changes.layout = input.layout;
-    if (input.notes !== undefined) changes.notes = input.notes;
-    if (input.theme !== undefined) changes.theme = input.theme;
+    const changes: Partial<Slide> & { slideId: string; changeFields?: string[]; bytesBefore?: number; bytesAfter?: number } = { slideId: input.slideId };
+
+    // Track which fields are changing — surfaced back to the agent + persisted
+    // so the editor's history view can show "Slide N corrected: title, content".
+    const changedFields: string[] = [];
+    if (input.title !== undefined) { changes.title = input.title; changedFields.push("title"); }
+    if (input.content !== undefined) {
+      changes.content = input.content;
+      changedFields.push("content");
+      // Capture byte delta when we have access to the prior slide via context.slides.
+      if (Array.isArray(context?.slides)) {
+        const prev = (context.slides as Array<{ id: string; content?: string }>).find((s) => s.id === input.slideId);
+        if (prev?.content !== undefined) {
+          changes.bytesBefore = prev.content.length;
+          changes.bytesAfter = input.content.length;
+        }
+      }
+    }
+    if (input.layout !== undefined) { changes.layout = input.layout; changedFields.push("layout"); }
+    if (input.notes !== undefined) { changes.notes = input.notes; changedFields.push("notes"); }
+    if (input.theme !== undefined) { changes.theme = input.theme; changedFields.push("theme"); }
+    changes.changeFields = changedFields;
     return changes;
   },
 };

@@ -6,12 +6,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChatPanel, applyAgentEvent, type ChatState } from "@/components/editor/ChatPanel";
 import type { ToolCallEntry } from "@/lib/types";
 import { SlideCanvas, CodeView, type SlideCanvasHandle } from "@/components/editor/SlideCanvas";
+import { SheetCanvas } from "@/components/editor/SheetCanvas";
+import { WebsiteCanvas, type WebsiteCanvasHandle } from "@/components/editor/website/WebsiteCanvas";
 import { EditorTopBar } from "@/components/editor/EditorTopBar";
 import { CanvasToolbar, type ViewMode } from "@/components/editor/CanvasToolbar";
+import { DocsToolbar } from "@/components/editor/DocsToolbar";
+import { SheetsToolbar } from "@/components/editor/SheetsToolbar";
+import { WebsiteToolbar, type DeviceWidth } from "@/components/editor/WebsiteToolbar";
+import type { FileVersion } from "@/components/editor/website/VersionHistoryPanel";
 import { PresentationView } from "@/components/editor/PresentationView";
 import { SlidesWidget } from "@/components/editor/SlidesWidget";
 import { InputToolbar } from "@/components/shared/InputToolbar";
-import { SessionFeedbackModal, FeedbackButton, PostGenNudge } from "@/components/editor/SessionFeedbackModal";
+import { AgentQuestionCard } from "@/components/shared/AgentQuestionCard";
+import type { PreflightQuestion } from "@/app/api/website-preflight/route";
 import type { Session, Slide } from "@/lib/redis";
 import type { ThemeName, ThemeColors } from "@/agent/tools/set-theme";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
@@ -23,7 +30,55 @@ export default function EditorPage() {
   const router = useRouter();
 
   const [sessionTitle, setSessionTitle] = useState("Untitled Presentation");
-  const [sessionType, setSessionType] = useState<"slides" | "docs">("slides");
+  const [sessionType, setSessionType] = useState<"slides" | "docs" | "sheets" | "website">("slides");
+  const [websiteFiles, setWebsiteFiles] = useState<Record<string, string>>({});
+  const [websitePreviewScreenshotUrl, setWebsitePreviewScreenshotUrl] = useState<string | null>(null);
+  const [websiteSnapshotUrl, setWebsiteSnapshotUrl] = useState<string | null>(null);
+  // Click-to-edit prefill: bumped whenever the user alt-clicks an element in
+  // the preview iframe. nonce makes identical-text repeat prefills re-trigger.
+  const [inputPrefill, setInputPrefill] = useState<{ text: string; nonce: number } | null>(null);
+  const [websiteEnvVarNames, setWebsiteEnvVarNames] = useState<string[]>([]);
+  const [websiteTemplateName, setWebsiteTemplateName] = useState<string | null>(null);
+  const [websitePublishedUrl, setWebsitePublishedUrl] = useState<string | null>(null);
+  // Gate for WebContainer boot: true once we know whether this is a fresh session
+  // (no GET needed — pending prompt from home page) or an existing one (GET completed).
+  // Prevents the hook from booting with empty initialFiles before the fetch fills them in.
+  const [sessionBootReady, setSessionBootReady] = useState(false);
+  const [sandboxState, setSandboxState] = useState<"idle" | "booting" | "mounting" | "installing" | "running" | "error" | "crashed" | "reconnecting">("idle");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const websiteCanvasRef = useRef<{
+    applyFileEvent: (e: { type: string; path: string; content?: string }) => void;
+    runCommand: (cmd: string, args: string[], toolUseId?: string, sync?: boolean) => void;
+    captureAndUploadScreenshot: () => Promise<void>;
+    openEnvVarsPanel: () => void;
+    reboot: () => void;
+    selectFile: (path: string) => void;
+    restoreFiles: (files: Record<string, string>) => void;
+  } | null>(null);
+  const [websiteSelectedFile, setWebsiteSelectedFile] = useState<string | null>(null);
+  const [websiteDeviceWidth, setWebsiteDeviceWidth] = useState<DeviceWidth>(null);
+  // Version history: per-file array of snapshots, max 10 each
+  const [fileVersions, setFileVersions] = useState<Record<string, FileVersion[]>>({});
+  // Turn baseline: snapshot of file contents at the start of each agent turn
+  const fileOriginalsRef = useRef<Record<string, string>>({});
+  const [fileOriginals, setFileOriginals] = useState<Record<string, string>>({});
+  // Files currently being written by AI
+  const [lockedFiles, setLockedFiles] = useState<Set<string>>(new Set());
+  // Per-turn snapshots for rewind/fork — stores state at end of each completed turn
+  interface TurnSnapshot {
+    chatMessageCount: number;
+    sessionMessageCount: number;
+    websiteFiles: Record<string, string>;
+  }
+  const [turnSnapshots, setTurnSnapshots] = useState<TurnSnapshot[]>([]);
+  // Pending snapshot data — set when `done` SSE fires, consumed once isStreaming flips false
+  const pendingSnapshotRef = useRef<{ sessionMessageCount: number; websiteFiles: Record<string, string> } | null>(null);
+  const wasStreamingRef = useRef(false);
+  // Ref to latest websiteFiles for snapshot capture (React state lags in SSE loop)
+  const websiteFilesRef = useRef<Record<string, string>>({});
+  // Keep websiteFilesRef in sync with state
+  useEffect(() => { websiteFilesRef.current = websiteFiles; }, [websiteFiles]);
   const [slides, setSlidesRaw] = useState<Slide[]>([]);
   const slidesRef = useRef<Slide[]>([]);
   // Wrapper that keeps ref in sync — use this everywhere instead of setSlidesRaw.
@@ -40,6 +95,7 @@ export default function EditorPage() {
   const [logoResult, setLogoResult] = useState<import("@/lib/types").LogoResult | null>(null);
   const [isPublic, setIsPublic] = useState(false);
   const [isReplay, setIsReplay] = useState(false);
+  const [brandKitId, setBrandKitId] = useState<string | null>(null);
   const [buildingSlide, setBuildingSlide] = useState<{
     toolUseId: string;
     title?: string;
@@ -50,6 +106,20 @@ export default function EditorPage() {
     messages: [],
     isStreaming: false,
   });
+
+  // When isStreaming flips false → React has flushed all chatState updates → safe to read messages.length
+  useEffect(() => {
+    if (!chatState.isStreaming && wasStreamingRef.current && pendingSnapshotRef.current) {
+      const { sessionMessageCount, websiteFiles: snapFiles } = pendingSnapshotRef.current;
+      pendingSnapshotRef.current = null;
+      setTurnSnapshots((snaps) => [
+        ...snaps,
+        { chatMessageCount: chatState.messages.length, sessionMessageCount, websiteFiles: snapFiles },
+      ]);
+    }
+    wasStreamingRef.current = chatState.isStreaming;
+  }, [chatState.isStreaming, chatState.messages.length]);
+
   const [toolHistory, setToolHistory] = useState<ToolCallEntry[]>([]);
 
   // Canvas state
@@ -59,16 +129,12 @@ export default function EditorPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("slide");
   const [isPresentMode, setIsPresentMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [, setActiveSlideId] = useState<string | null>(null);
+  const [activeSlideId, setActiveSlideId] = useState<string | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
   const [attachedSlideText, setAttachedSlideText] = useState<string | null>(null);
   const [attachedSlide, setAttachedSlide] = useState<{ id: string; index: number; title: string } | null>(null);
   const canvasRef = useRef<SlideCanvasHandle | null>(null);
 
-  // Feedback state
-  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
-  const [nudgeVisible, setNudgeVisible] = useState(false);
-  const nudgeDismissedRef = useRef(false);
   const hasShownNudgeRef = useRef(false);
 
   // Undo/redo for AI-generated slide changes (state-based, keyboard only)
@@ -113,11 +179,14 @@ export default function EditorPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo, handleRedo, isEditMode]);
 
+  // Website preflight questions (shown before first send)
+  const [pendingQuestions, setPendingQuestions] = useState<PreflightQuestion[] | null>(null);
+  const pendingPromptRef = useRef<{ message: string; opts: Parameters<typeof handleSend>[1] } | null>(null);
+
   const abortRef = useRef<AbortController | null>(null);
   const initialSentRef = useRef(false);
   // Track whether canvas was ever manually closed — prevents auto-reopen on slide updates
   const canvasManuallyClosedRef = useRef(false);
-
 
   // Load existing session on mount — skip if pending prompt exists (brand new session, doesn't exist yet)
   // Also skip if initialSentRef is already true (React Strict Mode re-runs effects after
@@ -125,6 +194,8 @@ export default function EditorPage() {
   useEffect(() => {
     if (sessionStorage.getItem(`pending-prompt:${sessionId}`) || initialSentRef.current) {
       setIsLoading(false);
+      // Fresh session — no file tree to hydrate from server; WebContainer can boot immediately.
+      setSessionBootReady(true);
       return;
     }
     fetch(`/api/chat?sessionId=${sessionId}`)
@@ -139,9 +210,24 @@ export default function EditorPage() {
         if (session.themeColors) setThemeColors(session.themeColors as unknown as import("@/agent/tools/set-theme").ThemeColors);
         setIsPublic(session.isPublic ?? false);
         setIsReplay(session.isReplay ?? false);
+        setBrandKitId(session.brandKitId ?? null);
 
-        // If session has slides, open canvas immediately
-        if ((session.slides ?? []).length > 0) {
+        // Website mode: hydrate files + screenshot + snapshot
+        if (session.type === "website") {
+          setWebsiteFiles((session.websiteFilesJson as Record<string, string>) ?? {});
+          setWebsitePreviewScreenshotUrl(session.previewScreenshotUrl ?? null);
+          setWebsiteSnapshotUrl(session.webcontainerSnapshotUrl ?? null);
+          setWebsiteTemplateName((session as any).websiteTemplateName ?? null);
+          setWebsitePublishedUrl((session as any).websitePublishedUrl ?? null);
+          // Fetch env var NAMES (not values)
+          fetch(`/api/website-env-vars?sessionId=${sessionId}`)
+            .then((r) => r.ok ? r.json() : { names: [] })
+            .then((d: { names?: string[] }) => setWebsiteEnvVarNames(d.names ?? []))
+            .catch(() => { /* ignore */ });
+        }
+
+        // If session has slides OR website files, open canvas immediately
+        if ((session.slides ?? []).length > 0 || (session.type === "website" && session.websiteFilesJson)) {
           setCanvasOpen(true);
           setChatExpanded(false);
         }
@@ -181,49 +267,155 @@ export default function EditorPage() {
         setToolHistory(fixedHistory);
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        setIsLoading(false);
+        // Whether fetch succeeded, returned null (fresh session), or errored — we've now
+        // done our best to hydrate file state. Safe to let the WebContainer boot.
+        setSessionBootReady(true);
+      });
   }, [sessionId]);
 
   // Auto-open canvas on first slide (or first building preview) — unless user manually closed it
+  // For website sessions: open as soon as the session type is known, so the WebContainer hook
+  // mounts and boot starts in parallel with the model thinking. Otherwise tool calls arrive
+  // before the hook exists and everything gets silently dropped.
   useEffect(() => {
-    if ((slides.length > 0 || buildingSlide) && !canvasOpen && !canvasManuallyClosedRef.current) {
+    const shouldOpen =
+      slides.length > 0 ||
+      buildingSlide ||
+      sessionType === "website";
+    if (shouldOpen && !canvasOpen && !canvasManuallyClosedRef.current) {
       setCanvasOpen(true);
       setChatExpanded(false);
     }
-  }, [slides.length, buildingSlide, canvasOpen]);
+  }, [slides.length, buildingSlide, canvasOpen, sessionType]);
+
+  // Drift reconciliation — handles SSE drops from backgrounded tabs, network blips,
+  // and mobile Safari memory kills. Works as a backup channel alongside the primary
+  // SSE stream. When the tab is visible AND we think the server is still streaming,
+  // poll the session every 5s and merge any slides the server has that we don't.
+  // Cheap: per-iteration saveSession keeps Redis fresh, so a GET is a ~5ms cache hit.
+  // Browsers throttle setInterval when the tab is hidden, so backgrounded tabs cost
+  // nothing extra here.
+  useEffect(() => {
+    if (!chatState.isStreaming || !sessionId) return;
+
+    const reconcile = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch(`/api/chat?sessionId=${sessionId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const serverSlides = data?.session?.slides;
+        if (Array.isArray(serverSlides) && serverSlides.length > slidesRef.current.length) {
+          setSlides(serverSlides);
+        }
+      } catch {
+        // Silent — SSE is the primary channel. Polling is a best-effort backup.
+      }
+    };
+
+    const intervalId = setInterval(reconcile, 5000);
+    return () => clearInterval(intervalId);
+  }, [chatState.isStreaming, sessionId, setSlides]);
 
   // Fire initial message from sessionStorage (set by home page before navigating)
   useEffect(() => {
     const key = `pending-prompt:${sessionId}`;
     const deepKey = `pending-deep-research:${sessionId}`;
     const docsKey = `pending-docs-mode:${sessionId}`;
+    const sheetsKey = `pending-sheets-mode:${sessionId}`;
+    const websiteKey = `pending-website-mode:${sessionId}`;
     const attsKey = `pending-attachments:${sessionId}`;
     const templateKey = `pending-template-slug:${sessionId}`;
+    const brandKey = `pending-brand-kit:${sessionId}`;
     const q = sessionStorage.getItem(key);
     if (!q || initialSentRef.current) return;
     initialSentRef.current = true;
     const isDeep = sessionStorage.getItem(deepKey) === "true";
     const isDocs = sessionStorage.getItem(docsKey) === "true";
+    const isSheets = sessionStorage.getItem(sheetsKey) === "true";
+    const isWebsite = sessionStorage.getItem(websiteKey) === "true";
     const attsRaw = sessionStorage.getItem(attsKey);
     const pendingAtts: import("@/components/shared/InputToolbar").PendingAttachment[] = attsRaw ? JSON.parse(attsRaw) : [];
     const templateSlug = sessionStorage.getItem(templateKey) ?? undefined;
+    const pendingBrandKitId = sessionStorage.getItem(brandKey);
     sessionStorage.removeItem(key);
     sessionStorage.removeItem(deepKey);
     sessionStorage.removeItem(docsKey);
+    sessionStorage.removeItem(sheetsKey);
+    sessionStorage.removeItem(websiteKey);
     sessionStorage.removeItem(attsKey);
     sessionStorage.removeItem(templateKey);
-    const opts: { deepResearch?: boolean; docsMode?: boolean; attachments?: import("@/components/shared/InputToolbar").PendingAttachment[]; templateSlug?: string } = {};
+    sessionStorage.removeItem(brandKey);
+
+    // If the home picker chose a non-default kit, pin it to the session via
+    // PATCH before the first message goes out. This way the very first chat
+    // turn already runs under the chosen kit (auto-stamp logic on the chat
+    // route would otherwise pick the user's default).
+    if (pendingBrandKitId) {
+      void fetch(`/api/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandKitId: pendingBrandKitId }),
+      }).catch(() => { /* non-fatal — falls back to default */ });
+    }
+    const opts: { deepResearch?: boolean; docsMode?: boolean; sheetsMode?: boolean; websiteMode?: boolean; attachments?: import("@/components/shared/InputToolbar").PendingAttachment[]; templateSlug?: string } = {};
     if (isDeep) opts.deepResearch = true;
     if (isDocs) { opts.docsMode = true; setSessionType("docs"); setSessionTitle("Untitled Document"); }
+    if (isSheets) { opts.sheetsMode = true; setSessionType("sheets"); setSessionTitle("Untitled Spreadsheet"); }
+    if (isWebsite) { opts.websiteMode = true; setSessionType("website"); setSessionTitle("Untitled Website"); }
     if (pendingAtts.length) opts.attachments = pendingAtts;
     if (templateSlug) opts.templateSlug = templateSlug;
+
+    // For fresh website sessions, run preflight to show clarifying questions
+    if (isWebsite) {
+      const finalOpts = Object.keys(opts).length ? opts : undefined;
+      pendingPromptRef.current = { message: q, opts: finalOpts };
+      fetch("/api/website-preflight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: q }),
+      })
+        .then((r) => r.json())
+        .then((data: { questions?: PreflightQuestion[] }) => {
+          const qs = data.questions ?? [];
+          if (qs.length > 0) {
+            setPendingQuestions(qs);
+          } else {
+            // No questions — send immediately
+            const p = pendingPromptRef.current;
+            pendingPromptRef.current = null;
+            if (p) handleSend(p.message, p.opts);
+          }
+        })
+        .catch(() => {
+          // Preflight failed — proceed without questions
+          const p = pendingPromptRef.current;
+          pendingPromptRef.current = null;
+          if (p) handleSend(p.message, p.opts);
+        });
+      return;
+    }
+
     handleSend(q, Object.keys(opts).length ? opts : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
   const handleSend = useCallback(
-    async (message: string, options?: { deepResearch?: boolean; docsMode?: boolean; attachments?: import("@/components/shared/InputToolbar").PendingAttachment[]; templateSlug?: string }) => {
+    async (message: string, options?: { deepResearch?: boolean; docsMode?: boolean; sheetsMode?: boolean; websiteMode?: boolean; discussMode?: boolean; attachments?: import("@/components/shared/InputToolbar").PendingAttachment[]; templateSlug?: string }) => {
       if (chatState.isStreaming) return;
+
+      // Snapshot current website files as the diff baseline for this turn
+      if (sessionType === "website") {
+        // Read current files synchronously via the ref pattern isn't available here,
+        // so we update via setState callback to capture latest value
+        setWebsiteFiles((prev) => {
+          fileOriginalsRef.current = { ...prev };
+          setFileOriginals({ ...prev });
+          return prev;
+        });
+      }
 
       const readyAttachments = (options?.attachments ?? []).filter((a) => a.status === "ready" && a.storagePath);
 
@@ -247,6 +439,10 @@ export default function EditorPage() {
       const ctrl = new AbortController();
       abortRef.current = ctrl;
 
+      // Local accumulator for website files — tracks changes within this turn
+      // without relying on React state (which lags in the SSE event loop).
+      let turnFiles: Record<string, string> = { ...websiteFilesRef.current };
+
       try {
         // Convert PendingAttachment → SessionAttachment shape (metadata only, no content)
         const attachmentsForApi = readyAttachments.map(({ id, name, mimeType, sizeBytes, storagePath, contentType }) => ({
@@ -258,7 +454,7 @@ export default function EditorPage() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, sessionId, deepResearch: options?.deepResearch ?? false, docsMode: options?.docsMode ?? false, attachments: attachmentsForApi.length ? attachmentsForApi : undefined, templateSlug: options?.templateSlug }),
+          body: JSON.stringify({ message, sessionId, deepResearch: options?.deepResearch ?? false, docsMode: options?.docsMode ?? false, sheetsMode: options?.sheetsMode ?? false, websiteMode: options?.websiteMode ?? false, discussMode: options?.discussMode ?? false, attachments: attachmentsForApi.length ? attachmentsForApi : undefined, templateSlug: options?.templateSlug }),
           signal: ctrl.signal,
         });
 
@@ -348,6 +544,50 @@ export default function EditorPage() {
                 setLogoResult({ url: event.logoUrl, source: "logo.dev", colors: event.colors ?? [], name: event.name });
               } else if (event.type === "title_updated") {
                 setSessionTitle(event.title);
+              } else if (event.type === "website_file_created" || event.type === "website_file_updated") {
+                // Track in local accumulator for turn snapshot
+                turnFiles = { ...turnFiles, [event.path]: event.content };
+                // Capture version snapshot before overwriting
+                if (event.type === "website_file_updated") {
+                  setWebsiteFiles((prev) => {
+                    const oldContent = prev[event.path];
+                    if (oldContent !== undefined && oldContent !== event.content) {
+                      setFileVersions((vPrev) => {
+                        const existing = vPrev[event.path] ?? [];
+                        const updated = [...existing, { timestamp: Date.now(), content: oldContent }].slice(-10);
+                        return { ...vPrev, [event.path]: updated };
+                      });
+                    }
+                    return { ...prev, [event.path]: event.content };
+                  });
+                } else {
+                  setWebsiteFiles((prev) => ({ ...prev, [event.path]: event.content }));
+                }
+                // Lock the file while streaming
+                setLockedFiles((prev) => { const n = new Set(prev); n.add(event.path); return n; });
+                websiteCanvasRef.current?.applyFileEvent(event);
+              } else if (event.type === "website_file_deleted") {
+                // Track in local accumulator for turn snapshot
+                const { [event.path]: _rm, ...rest } = turnFiles; turnFiles = rest;
+                setWebsiteFiles((prev) => {
+                  const next = { ...prev };
+                  delete next[event.path];
+                  return next;
+                });
+                websiteCanvasRef.current?.applyFileEvent(event);
+              } else if (event.type === "website_shell_command") {
+                websiteCanvasRef.current?.runCommand(event.cmd, event.args, event.toolUseId, event.sync);
+              } else if (event.type === "website_sandbox_state") {
+                setSandboxState(event.state);
+              } else if (event.type === "website_preview_ready") {
+                setPreviewUrl(event.url);
+              } else if (event.type === "website_build_error") {
+                setBuildError(event.message);
+              } else if (event.type === "website_template_set") {
+                setWebsiteTemplateName(event.templateName);
+              } else if (event.type === "done" && event.sessionMessageCount !== undefined) {
+                // Store snapshot data — consumed by useEffect once isStreaming flips false
+                pendingSnapshotRef.current = { sessionMessageCount: event.sessionMessageCount, websiteFiles: { ...turnFiles } };
               }
 
               setChatState((prev) => applyAgentEvent(prev, event));
@@ -361,38 +601,79 @@ export default function EditorPage() {
           setChatState((prev) => applyAgentEvent(prev, { type: "error", message: String(err) }));
         }
       } finally {
+        // Unlock all files now that streaming is done
+        setLockedFiles(new Set());
         // Defensive cleanup: mark any still-running tool cards as done
         setToolHistory(prev => prev.map(t =>
           t.status === "running" ? { ...t, status: "done" as const } : t
         ));
-        // Show nudge after first successful generation (with slides)
-        if (!hasShownNudgeRef.current && !nudgeDismissedRef.current && slidesRef.current.length > 0) {
-          hasShownNudgeRef.current = true;
-          setTimeout(() => {
-            if (!nudgeDismissedRef.current) setNudgeVisible(true);
-          }, 1200);
-        }
       }
     },
     [sessionId, chatState.isStreaming]
   );
 
-  const handleRegenerateSlide = useCallback(async (slide: import("@/lib/redis").Slide, reasonCode: string, freeText?: string) => {
-    // Fire-and-forget feedback save
-    fetch("/api/feedback/slide", {
+  const handleRewind = useCallback(async (snapshotIndex: number) => {
+    const snap = turnSnapshots[snapshotIndex];
+    if (!snap) return;
+    // Trim UI messages
+    setChatState((prev) => ({ ...prev, messages: prev.messages.slice(0, snap.chatMessageCount) }));
+    // Trim server-side session messages
+    await fetch("/api/sessions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sessionId, truncateMessagesTo: snap.sessionMessageCount }),
+    }).catch(() => {});
+    // Restore website files
+    if (sessionType === "website") {
+      setWebsiteFiles(snap.websiteFiles);
+      websiteCanvasRef.current?.restoreFiles(snap.websiteFiles);
+    }
+    // Trim snapshots to this point
+    setTurnSnapshots((prev) => prev.slice(0, snapshotIndex));
+  }, [sessionId, sessionType, turnSnapshots]);
+
+  const handleFork = useCallback(async (snapshotIndex: number) => {
+    const snap = turnSnapshots[snapshotIndex];
+    if (!snap) return;
+    const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        sessionId,
-        slideId: slide.id,
-        slideIndex: slide.index,
-        slideTitle: slide.title,
-        reasonCode,
-        freeText: freeText ?? null,
-        contentSnapshot: slide.content,
-        theme,
+        forkFromSessionId: sessionId,
+        forkMessageCount: snap.sessionMessageCount,
+        forkWebsiteFiles: snap.websiteFiles,
+        title: sessionTitle + " (fork)",
       }),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (!res?.ok) return;
+    const { id: newId } = await res.json().catch(() => ({}));
+    if (newId) window.location.assign(`/editor/${newId}`);
+  }, [sessionId, sessionTitle, turnSnapshots]);
+
+  const handleQuestionSubmit = useCallback((answers: Record<string, string>) => {
+    const p = pendingPromptRef.current;
+    pendingPromptRef.current = null;
+    setPendingQuestions(null);
+    if (!p) return;
+
+    // Build human-readable preferences string and append to message
+    const lines = Object.entries(answers).map(([, v]) => `- ${v}`);
+    const enrichedMessage = lines.length > 0
+      ? `${p.message}\n\n[Design preferences]\n${lines.join("\n")}`
+      : p.message;
+
+    handleSend(enrichedMessage, p.opts);
+  }, [handleSend]);
+
+  const handleQuestionSkip = useCallback(() => {
+    const p = pendingPromptRef.current;
+    pendingPromptRef.current = null;
+    setPendingQuestions(null);
+    if (p) handleSend(p.message, p.opts);
+  }, [handleSend]);
+
+  const handleRegenerateSlide = useCallback(async (slide: import("@/lib/redis").Slide, reasonCode: string, freeText?: string) => {
+    // OSS build: feedback telemetry stripped. Just regenerate the slide.
 
     // Build a descriptive prompt for the agent
     const reasonLabels: Record<string, string> = {
@@ -500,6 +781,9 @@ export default function EditorPage() {
           onAddToChat={(text) => setAttachedSlideText(text)}
           onSetAttachedSlideText={setAttachedSlideText}
           sessionId={sessionId}
+          websiteFiles={websiteFiles}
+          websitePreviewScreenshotUrl={websitePreviewScreenshotUrl}
+          websiteEnvVarNames={websiteEnvVarNames}
         />
         <AnimatePresence>
           {isPresentMode && slides.length > 0 && (
@@ -526,12 +810,35 @@ export default function EditorPage() {
           sessionType={sessionType}
           isStreaming={chatState.isStreaming}
           onBack={() => router.push("/")}
-          onPresent={() => setIsPresentMode(true)}
-          slidesCount={slides.length}
           sessionId={sessionId}
           isPublic={isPublic}
           isReplay={isReplay}
           onShareChange={(pub, rep) => { setIsPublic(pub); setIsReplay(rep); }}
+          brandKitId={brandKitId}
+          onBrandKitChange={(next) => {
+            const prev = brandKitId;
+            setBrandKitId(next);
+            void fetch(`/api/sessions/${sessionId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ brandKitId: next }),
+            }).then((r) => {
+              if (!r.ok) {
+                // Revert on failure
+                setBrandKitId(prev);
+              }
+            }).catch(() => setBrandKitId(prev));
+          }}
+          onRestyleWithKit={() => {
+            // Prefill the chat with a canned regenerate prompt. The user
+            // confirms by hitting send, which uses the brand kit currently
+            // pinned to this session — so they can swap kits first if they
+            // want a different style.
+            setInputPrefill({
+              text: "Re-render every slide using the current brand kit's design system and layout patterns. Update each slide in place: preserve the content but refresh the styling, structure, colors, and typography to match the kit. Use set_theme({ theme: 'from_brand_kit' }) before rebuilding.",
+              nonce: Date.now(),
+            });
+          }}
         />
 
         {/* Loading skeleton */}
@@ -592,6 +899,11 @@ export default function EditorPage() {
                 isStreaming={chatState.isStreaming}
                 compact={!chatExpanded}
                 sessionType={sessionType}
+                onQuickAction={(msg, isBuild) => handleSend(msg, { websiteMode: true, discussMode: !isBuild })}
+                onFileOpen={(path) => { setViewMode("code"); websiteCanvasRef.current?.selectFile(path); }}
+                turnSnapshots={turnSnapshots}
+                onRewindToTurn={handleRewind}
+                onForkFromTurn={handleFork}
               />
             </div>
 
@@ -609,148 +921,160 @@ export default function EditorPage() {
             </AnimatePresence>
 
             <div className="w-full pb-4 px-4 pt-2 flex-shrink-0">
-              {/* Post-generation nudge */}
-              <div style={{ display: "flex", justifyContent: "center", marginBottom: nudgeVisible ? 8 : 0 }}>
-                <PostGenNudge
-                  visible={nudgeVisible}
-                  onOpen={() => { setNudgeVisible(false); setFeedbackModalOpen(true); }}
-                  onDismiss={() => { nudgeDismissedRef.current = true; setNudgeVisible(false); }}
-                />
-              </div>
-
-              {/* Attached slide text chip */}
-              <AnimatePresence>
-                {attachedSlideText && (
+              {/* Preflight question card — replaces input area for fresh website sessions */}
+              <AnimatePresence mode="wait">
+                {pendingQuestions ? (
+                  <AgentQuestionCard
+                    key="questions"
+                    questions={pendingQuestions}
+                    onSubmit={handleQuestionSubmit}
+                    onSkip={handleQuestionSkip}
+                  />
+                ) : (
                   <motion.div
-                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    animate={{ opacity: 1, height: "auto", marginBottom: 8 }}
-                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    style={{ overflow: "hidden" }}
+                    key="input"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "8px 12px",
-                        background: "var(--bg2)",
-                        borderRadius: 10,
-                        border: "1px solid var(--border)",
+                    {/* Attached slide text chip */}
+                    <AnimatePresence>
+                      {attachedSlideText && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                          animate={{ opacity: 1, height: "auto", marginBottom: 8 }}
+                          exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                          style={{ overflow: "hidden" }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "8px 12px",
+                              background: "var(--bg2)",
+                              borderRadius: 10,
+                              border: "1px solid var(--border)",
+                            }}
+                          >
+                            <span style={{ fontSize: 14, color: "var(--text3)" }}>✎</span>
+                            <span
+                              style={{
+                                flex: 1,
+                                fontSize: 12.5,
+                                color: "var(--text)",
+                                fontWeight: 500,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                letterSpacing: "-0.01em",
+                              }}
+                            >
+                              {attachedSlideText.length > 80 ? attachedSlideText.slice(0, 80) + "…" : attachedSlideText}
+                            </span>
+                            <button
+                              onClick={() => setAttachedSlideText(null)}
+                              style={{
+                                width: 20, height: 20, borderRadius: "50%",
+                                background: "rgba(0,0,0,0.06)", border: "none",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                cursor: "pointer", color: "var(--text3)", fontSize: 11, flexShrink: 0,
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    {/* Attached slide chip */}
+                    <AnimatePresence>
+                      {attachedSlide && (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                          animate={{ opacity: 1, height: "auto", marginBottom: 8 }}
+                          exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                          style={{ overflow: "hidden" }}
+                        >
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "6px 10px 6px 8px",
+                              background: "var(--accent-soft)",
+                              borderRadius: 10,
+                              border: "1px solid var(--accent)",
+                            }}
+                          >
+                            <div style={{
+                              width: 22, height: 22, borderRadius: 6,
+                              background: "var(--accent)",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              flexShrink: 0,
+                            }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", lineHeight: 1 }}>
+                                {attachedSlide.index + 1}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 0, minWidth: 0 }}>
+                              <span style={{
+                                fontSize: 12, fontWeight: 600,
+                                color: "var(--accent-text)",
+                                letterSpacing: "-0.01em",
+                                lineHeight: 1.2,
+                              }}>
+                                Selected slide
+                              </span>
+                              <span style={{
+                                fontSize: 11, color: "var(--text3)",
+                                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                maxWidth: 180, lineHeight: 1.2,
+                              }}>
+                                {attachedSlide.title}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setAttachedSlide(null)}
+                              style={{
+                                width: 18, height: 18, borderRadius: "50%",
+                                background: "rgba(0,0,0,0.08)", border: "none",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                cursor: "pointer", color: "var(--text3)", fontSize: 10, flexShrink: 0,
+                                marginLeft: 2,
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                    <InputToolbar
+                      onSend={(msg, opts) => {
+                        if (attachedSlide) {
+                          handleSend(`[Regarding Slide ${attachedSlide.index + 1}: "${attachedSlide.title}"]\n\n${msg}`, opts);
+                          setAttachedSlide(null);
+                        } else if (attachedSlideText) {
+                          handleSend(`Edit this text on my slide: "${attachedSlideText}"\n\n${msg}`, opts);
+                          setAttachedSlideText(null);
+                        } else {
+                          handleSend(msg, opts);
+                        }
                       }}
-                    >
-                      <span style={{ fontSize: 14, color: "var(--text3)" }}>✎</span>
-                      <span
-                        style={{
-                          flex: 1,
-                          fontSize: 12.5,
-                          color: "var(--text)",
-                          fontWeight: 500,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          letterSpacing: "-0.01em",
-                        }}
-                      >
-                        {attachedSlideText.length > 80 ? attachedSlideText.slice(0, 80) + "…" : attachedSlideText}
-                      </span>
-                      <button
-                        onClick={() => setAttachedSlideText(null)}
-                        style={{
-                          width: 20, height: 20, borderRadius: "50%",
-                          background: "rgba(0,0,0,0.06)", border: "none",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          cursor: "pointer", color: "var(--text3)", fontSize: 11, flexShrink: 0,
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
+                      isStreaming={chatState.isStreaming}
+                      onStop={handleStop}
+                      placeholder={attachedSlide ? `What do you want to change on slide ${attachedSlide.index + 1}?` : attachedSlideText ? "What do you want to change?" : "Ask for changes…"}
+                      sessionType={sessionType}
+                      sessionId={sessionId}
+                      prefill={inputPrefill}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>
-              {/* Attached slide chip */}
-              <AnimatePresence>
-                {attachedSlide && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    animate={{ opacity: 1, height: "auto", marginBottom: 8 }}
-                    exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                    style={{ overflow: "hidden" }}
-                  >
-                    <div
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "6px 10px 6px 8px",
-                        background: "var(--accent-soft)",
-                        borderRadius: 10,
-                        border: "1px solid var(--accent)",
-                      }}
-                    >
-                      <div style={{
-                        width: 22, height: 22, borderRadius: 6,
-                        background: "var(--accent)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        flexShrink: 0,
-                      }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: "#fff", lineHeight: 1 }}>
-                          {attachedSlide.index + 1}
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 0, minWidth: 0 }}>
-                        <span style={{
-                          fontSize: 12, fontWeight: 600,
-                          color: "var(--accent-text)",
-                          letterSpacing: "-0.01em",
-                          lineHeight: 1.2,
-                        }}>
-                          Selected slide
-                        </span>
-                        <span style={{
-                          fontSize: 11, color: "var(--text3)",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          maxWidth: 180, lineHeight: 1.2,
-                        }}>
-                          {attachedSlide.title}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => setAttachedSlide(null)}
-                        style={{
-                          width: 18, height: 18, borderRadius: "50%",
-                          background: "rgba(0,0,0,0.08)", border: "none",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          cursor: "pointer", color: "var(--text3)", fontSize: 10, flexShrink: 0,
-                          marginLeft: 2,
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              <InputToolbar
-                onSend={(msg, opts) => {
-                  if (attachedSlide) {
-                    handleSend(`[Regarding Slide ${attachedSlide.index + 1}: "${attachedSlide.title}"]\n\n${msg}`, opts);
-                    setAttachedSlide(null);
-                  } else if (attachedSlideText) {
-                    handleSend(`Edit this text on my slide: "${attachedSlideText}"\n\n${msg}`, opts);
-                    setAttachedSlideText(null);
-                  } else {
-                    handleSend(msg, opts);
-                  }
-                }}
-                isStreaming={chatState.isStreaming}
-                onStop={handleStop}
-                placeholder={attachedSlide ? `What do you want to change on slide ${attachedSlide.index + 1}?` : attachedSlideText ? "What do you want to change?" : "Ask for changes…"}
-                sessionType={sessionType}
-                sessionId={sessionId}
-              />
             </div>
           </motion.div>
 
@@ -763,7 +1087,10 @@ export default function EditorPage() {
                 animate={{ opacity: 1, width: "auto", flex: 1 }}
                 exit={{ opacity: 0, width: 0 }}
                 transition={{ type: "spring", bounce: 0, duration: 0.5 }}
-                className="rounded-[var(--r-xl)] overflow-hidden flex flex-col relative m-2"
+                /* For sheets: no overflow:hidden so Univer's absolutely-positioned
+                   cell edit overlay isn't clipped when it extends slightly past the
+                   cell bounds. Slides/docs still get the rounded-clip treatment. */
+                className={`rounded-[var(--r-xl)] flex flex-col relative mx-2 mb-4 ${sessionType === "sheets" ? "" : "overflow-hidden"}`}
                 style={{
                   background: "var(--bg)",
                   border: "1px solid var(--border)",
@@ -771,23 +1098,122 @@ export default function EditorPage() {
                   minWidth: 0,
                 }}
               >
-                <CanvasToolbar
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                  onClose={isEditMode ? undefined : handleCloseCanvas}
-                  onEdit={handleEdit}
-                  onSaveEdit={handleSaveEdit}
-                  onCancelEdit={() => setIsEditMode(false)}
-                  isEditMode={isEditMode}
-                  sessionId={sessionId}
-                  sessionType={sessionType}
-                  onUndo={handleUndo}
-                  onRedo={handleRedo}
-                  canUndo={isEditMode ? editCanUndo : false}
-                  canRedo={isEditMode ? editCanRedo : false}
-                />
-                <div className="flex-1 relative overflow-hidden" style={{ background: "var(--bg2)" }}>
-                  {viewMode === "slide" ? (
+                {sessionType === "sheets" ? (
+                  <SheetsToolbar
+                    onClose={handleCloseCanvas}
+                    sessionId={sessionId}
+                  />
+                ) : sessionType === "website" ? (
+                  <WebsiteToolbar
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    onClose={handleCloseCanvas}
+                    onReboot={() => websiteCanvasRef.current?.reboot()}
+                    sessionId={sessionId}
+                    sessionTitle={sessionTitle}
+                    files={websiteFiles}
+                    previewUrl={previewUrl}
+                    publishedUrl={websitePublishedUrl}
+                    onPublished={(url) => setWebsitePublishedUrl(url)}
+                    onNeedsConnect={() => {
+                      handleSend("Connect my GitHub account", { websiteMode: true });
+                    }}
+                    onImported={(importedFiles) => {
+                      setWebsiteFiles((prev) => ({ ...prev, ...importedFiles }));
+                      Object.entries(importedFiles).forEach(([path, content]) => {
+                        websiteCanvasRef.current?.applyFileEvent({ type: "website_file_created", path, content });
+                      });
+                    }}
+                    deviceWidth={websiteDeviceWidth}
+                    onDeviceWidthChange={setWebsiteDeviceWidth}
+                    fileOriginals={fileOriginals}
+                  />
+                ) : sessionType === "docs" ? (
+                  <DocsToolbar
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    onClose={isEditMode ? undefined : handleCloseCanvas}
+                    onEdit={handleEdit}
+                    onSaveEdit={handleSaveEdit}
+                    onCancelEdit={() => setIsEditMode(false)}
+                    isEditMode={isEditMode}
+                    sessionId={sessionId}
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
+                    canUndo={isEditMode ? editCanUndo : false}
+                    canRedo={isEditMode ? editCanRedo : false}
+                  />
+                ) : (
+                  <CanvasToolbar
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                    onClose={isEditMode ? undefined : handleCloseCanvas}
+                    onEdit={handleEdit}
+                    onSaveEdit={handleSaveEdit}
+                    onCancelEdit={() => setIsEditMode(false)}
+                    isEditMode={isEditMode}
+                    sessionId={sessionId}
+                    onUndo={handleUndo}
+                    onRedo={handleRedo}
+                    canUndo={isEditMode ? editCanUndo : false}
+                    canRedo={isEditMode ? editCanRedo : false}
+                    onPresent={() => setIsPresentMode(true)}
+                    slidesCount={slides.length}
+                  />
+                )}
+                <div className={`flex-1 relative ${sessionType === "sheets" || sessionType === "website" ? "" : "overflow-hidden"}`} style={{ background: sessionType === "sheets" ? "var(--sheet-canvas-bg, #FBF8F3)" : "var(--bg2)" }}>
+                  {sessionType === "website" ? (
+                    <WebsiteCanvas
+                      ref={websiteCanvasRef as unknown as React.Ref<WebsiteCanvasHandle>}
+                      sessionId={sessionId}
+                      files={websiteFiles}
+                      previewScreenshotUrl={websitePreviewScreenshotUrl}
+                      snapshotUrl={websiteSnapshotUrl}
+                      envVarsDecrypted={{}}
+                      envVarNames={websiteEnvVarNames}
+                      viewMode={viewMode === "code" ? "code" : "preview"}
+                      onEnvVarsUpdated={setWebsiteEnvVarNames}
+                      bootEnabled={sessionBootReady}
+                      templateName={websiteTemplateName}
+                      publishedUrl={websitePublishedUrl}
+                      selectedFilePath={websiteSelectedFile}
+                      onSelectedFileChange={setWebsiteSelectedFile}
+                      deviceWidth={websiteDeviceWidth}
+                      lockedFiles={lockedFiles}
+                      fileVersions={fileVersions}
+                      fileOriginals={fileOriginals}
+                      onRestoreVersion={(path, content) => {
+                        setWebsiteFiles((prev) => ({ ...prev, [path]: content }));
+                      }}
+                      onElementClicked={(payload) => {
+                        // Translate element info into a ready-to-send prompt.
+                        // Keep the text short so it doesn't dominate; user
+                        // types the actual change they want after the em dash.
+                        const shortText = (payload.text || "").slice(0, 60);
+                        const subject = shortText
+                          ? `the ${payload.tag} "${shortText}"`
+                          : `this ${payload.tag}`;
+                        const seed = `Change ${subject} — `;
+                        setInputPrefill({ text: seed, nonce: Date.now() });
+                      }}
+                      onAskAIToFix={(msg) => setInputPrefill({ text: msg, nonce: Date.now() })}
+                    />
+                  ) : sessionType === "sheets" ? (
+                    <SheetCanvas
+                      slides={slides}
+                      activeSheetId={activeSlideId ?? undefined}
+                      onActiveSheetChange={setActiveSlideId}
+                      onSheetsEdited={(slideId, workbookJson) => {
+                        setSlides((prev) => prev.map((s) => s.id === slideId ? { ...s, workbookJson } : s));
+                        // Persist to server so edits survive Redis cache expiry / reload
+                        fetch(`/api/sessions/${sessionId}`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ slideId, workbookJson }),
+                        }).catch((err) => console.warn("[editor] sheet save failed:", err));
+                      }}
+                    />
+                  ) : viewMode === "slide" ? (
                     <SlideCanvas
                       ref={canvasRef}
                       slides={slides}
@@ -828,20 +1254,6 @@ export default function EditorPage() {
         )}
       </AnimatePresence>
 
-      {/* Floating feedback button — only when canvas has slides */}
-      {canvasOpen && slides.length > 0 && !isEditMode && (
-        <FeedbackButton onClick={() => { setNudgeVisible(false); setFeedbackModalOpen(true); }} />
-      )}
-
-      <SessionFeedbackModal
-        open={feedbackModalOpen}
-        onClose={() => setFeedbackModalOpen(false)}
-        sessionId={sessionId}
-        slideCount={slides.length}
-        sessionType={sessionType}
-        theme={theme}
-        triggerSource="manual"
-      />
     </div>
   );
 }

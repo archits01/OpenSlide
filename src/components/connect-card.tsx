@@ -12,6 +12,8 @@ interface ConnectCardProps {
 const PROVIDER_LABELS: Record<string, string> = {
   gmail: 'Gmail',
   github: 'GitHub',
+  google_drive: 'Google Drive',
+  google_sheets: 'Google Sheets',
 };
 
 export function ConnectCard({ provider, connectUrl, message, onConnected }: ConnectCardProps) {
@@ -33,14 +35,18 @@ export function ConnectCard({ provider, connectUrl, message, onConnected }: Conn
   }, [provider, onConnected]);
 
   function handleConnect() {
+    const returnTo = encodeURIComponent(window.location.pathname);
+    const sep = connectUrl.includes('?') ? '&' : '?';
+    const urlWithReturn = `${connectUrl}${sep}returnTo=${returnTo}`;
+
     const popup = window.open(
-      connectUrl,
+      urlWithReturn,
       `oauth_${provider}`,
       'width=600,height=700,left=200,top=100'
     );
 
     if (!popup) {
-      window.location.href = `${connectUrl}&returnTo=${encodeURIComponent(window.location.pathname)}`;
+      window.location.href = urlWithReturn;
       return;
     }
 
@@ -77,13 +83,19 @@ export function ConnectCard({ provider, connectUrl, message, onConnected }: Conn
         flexDirection: 'column',
         gap: '10px',
         padding: '14px 16px',
-        background: 'var(--bg2)',
-        border: '1px solid var(--border)',
+        background: 'var(--warn-soft)',
+        border: '1px solid var(--warn)',
         borderRadius: 'var(--r-lg)',
         maxWidth: '360px',
       }}
     >
-      <p style={{ margin: 0, fontSize: '14px', color: 'var(--text2)' }}>{message}</p>
+      <p style={{ margin: 0, fontSize: '14px', color: 'var(--text)' }}>
+        {message || (
+          <>
+            Connect <strong>{label}</strong> to continue.
+          </>
+        )}
+      </p>
       <button
         onClick={handleConnect}
         disabled={status === 'connecting'}

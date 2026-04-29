@@ -8,7 +8,7 @@
  *   2. Google Favicon (always works, 128px max, no auth)
  */
 
-import type { AgentTool } from "./index";
+import type { AgentTool, AgentToolContext } from "./index";
 import type { LogoResult } from "@/lib/types";
 
 export type { LogoResult };
@@ -140,8 +140,30 @@ export const fetchLogoTool: AgentTool = {
     required: ["domain"],
   },
 
-  async execute(rawInput: unknown): Promise<LogoResult> {
+  async execute(rawInput: unknown, _signal?: AbortSignal, context?: AgentToolContext): Promise<LogoResult & { skipped?: boolean; reason?: string }> {
     const { domain } = rawInput as FetchLogoInput;
+
+    // Architectural guard: never fetch a logo for the active brand kit's own
+    // brand. The kit IS the deck's styling source, not its subject — its
+    // identity flows through {{brand.*}} placeholders, not via fetch_logo.
+    // Without this, agents repeatedly fetch e.g. mckinsey.com when the user's
+    // deck is styled like McKinsey but is actually about Northwind.
+    if (context?.activeBrandKit?.blockedDomainStems?.length) {
+      const cleaned = domain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+      const stem = cleaned.split(".")[0];
+      if (stem && context.activeBrandKit.blockedDomainStems.includes(stem)) {
+        const msg = `Skipping fetch_logo for "${domain}" — this matches the active brand kit "${context.activeBrandKit.brandName}". The kit's identity is already the deck's STYLING SOURCE; do not fetch logos for it. Use fetch_logo only for entities the user named as the deck's TOPIC.`;
+        console.log(`[fetch_logo] ${msg}`);
+        return {
+          url: "",
+          source: "skipped" as never,
+          colors: [],
+          skipped: true,
+          reason: msg,
+        };
+      }
+    }
+
     console.log(`[fetch_logo] Resolving logo for: ${domain}`);
     const result = await fetchLogo(domain);
     console.log(`[fetch_logo] ${result.source}: ${result.url}${result.colors.length ? ` colors: ${result.colors.join(", ")}` : ""}`);

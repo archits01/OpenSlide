@@ -4,8 +4,10 @@ export interface Message {
 }
 
 export interface ContentBlock {
-  type: "text" | "tool_use" | "tool_result" | "document" | "image";
+  type: "text" | "tool_use" | "tool_result" | "document" | "image" | "thinking";
   text?: string;
+  thinking?: string;
+  signature?: string;
   id?: string;
   name?: string;
   input?: unknown;
@@ -32,10 +34,16 @@ export interface SessionAttachment {
   addedAt: number;
 }
 
+export type SessionType = "slides" | "docs" | "sheets" | "website";
+
+export function validSessionType(t: unknown): SessionType {
+  return t === "docs" || t === "sheets" || t === "website" ? t : "slides";
+}
+
 export interface Session {
   id: string;
   title: string;
-  type?: "slides" | "docs";
+  type?: SessionType;
   createdAt: number;
   updatedAt: number;
   messages: Message[];
@@ -61,6 +69,25 @@ export interface Session {
     snippet: string;
     retrievedAt: number;
   }>;
+  // ─── Website mode fields ────────────────────────────────────────────────
+  /** Website file tree: path → content. Source of truth; WebContainer FS is hydrated from this. */
+  websiteFilesJson?: Record<string, string> | null;
+  /** AES-256-GCM ciphertext (base64) of env vars. Decrypted server-side only. */
+  websiteEnvVars?: string | null;
+  /** Supabase Storage URL of last captured PNG of the preview. */
+  previewScreenshotUrl?: string | null;
+  /** Supabase Storage URL of last WebContainer FS snapshot (.bin). Skips npm install on reload. */
+  webcontainerSnapshotUrl?: string | null;
+  /** True if files/env have changed since last snapshot upload. */
+  websiteSandboxDirty?: boolean;
+  /** Template used to scaffold this session (e.g. "vite-react", "expo", "astro"). */
+  websiteTemplateName?: string | null;
+  /** Stable published URL after a Vercel deploy (e.g. https://myapp.vercel.app). */
+  websitePublishedUrl?: string | null;
+  /** Per-session brand kit override. When set, this kit is used regardless of the user's default. */
+  brandKitId?: string | null;
+  /** Free-text topic / subject of this deck (extracted from first prompt). */
+  topicSubject?: string | null;
 }
 
 export interface Slide {
@@ -73,6 +100,10 @@ export interface Slide {
   notes?: string;
   type?: OutlineSlideType;
   patternHint?: string;
+  /** Serialized Univer workbook JSON (sheets only). Source of truth for sheet data. */
+  workbookJson?: string;
+  /** Number of sheets/tabs in the workbook (sheets only). */
+  workbookSheetCount?: number;
 }
 
 export type OutlineSlideType =
@@ -87,6 +118,10 @@ export interface OutlineSlide {
   speaker_notes?: string;
   key_facts?: string[];
   sources?: string[];
+  /** Exact pattern name from the loaded layout library (e.g., "B4: SVG Chart + 3-Panel Sidebar") */
+  pattern_name?: string;
+  /** One sentence: what goes where, how many items, focal point, and density hint if non-standard (e.g., "data-heavy, 12px body") */
+  layout_notes?: string;
 }
 
 export interface Outline {
@@ -122,4 +157,17 @@ export interface SessionSummary {
     content: string;
     theme: string;
   };
+  /** Last captured preview PNG — only populated for website sessions. */
+  previewScreenshotUrl?: string | null;
+}
+
+export type ConnectorStatus = "available" | "soon" | "connected" | "beta";
+export type ConnectorAction = "connect" | "install";
+
+export interface Connector {
+  id: string;
+  label: string;
+  iconUrl: string;
+  status: ConnectorStatus;
+  action?: ConnectorAction;
 }

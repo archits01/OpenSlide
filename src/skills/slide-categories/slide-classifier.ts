@@ -98,8 +98,8 @@ function buildClassifierPrompt(): string {
 
   // Only the most confusing disambiguation cases — Sonnet handles the rest
   const CRITICAL_DISAMBIG = [
-    `"pitch deck for my startup" + investors → business_corporate/investment_finance, NOT educational`,
-    `"presentation about [company]" (Apple, Tesla, etc.) without business context → educational/academic:topic_explainer`,
+    `"pitch deck" ALWAYS → business_corporate/investment_finance, regardless of company name. "Pitch deck for Anthropic" = investment_finance, NOT educational`,
+    `"presentation about [company]" (Apple, Tesla, etc.) WITHOUT "pitch deck"/"investor"/"fundraise" context → educational/academic:topic_explainer`,
     `"marketing strategy/plan" → sales_marketing/marketing, NOT strategy_planning`,
     `"QBR" with customer → sales_marketing/sales. Internal QBR → business_corporate/investment_finance`,
     `"presentation about [topic]" / "explain X" / "top 10 X" → educational/academic:topic_explainer`,

@@ -6,6 +6,8 @@ import { reorderSlidesTool } from "./reorder-slides";
 import { setThemeTool } from "./set-theme";
 import { createOutlineTool } from "./create-outline";
 import { fetchLogoTool } from "./fetch-logo";
+import { updateBrandSkillTool } from "./update-brand-skill";
+import { readBrandKitTool } from "./read-brand-kit";
 
 class SlideToolProvider implements ToolProvider {
   name = "slides";
@@ -19,6 +21,8 @@ class SlideToolProvider implements ToolProvider {
       reorderSlidesTool,
       setThemeTool,
       fetchLogoTool,
+      updateBrandSkillTool,
+      readBrandKitTool,
     ];
   }
 }

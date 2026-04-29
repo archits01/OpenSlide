@@ -61,6 +61,14 @@ export const createOutlineTool: AgentTool = {
               items: { type: "string" },
               description: "URLs of web pages or research citations that support this slide's key_facts. Each entry should be a full URL. Empty array allowed only for slides with type 'title' or 'transition'."
             },
+            pattern_name: {
+              type: "string",
+              description: "Exact pattern name from the loaded layout library (e.g., 'B4: SVG Chart + 3-Panel Sidebar', 'Pattern 3: Standard Cards Row'). Match the slide's content shape to the best pattern using the Pattern Selection table in the system prompt. Title slides at index 0 use the cover archetype instead.",
+            },
+            layout_notes: {
+              type: "string",
+              description: "One sentence describing the visual layout: what goes where, how many items, what's the focal point. Include density hint if non-standard: 'data-heavy, 12px body'. E.g., 'Hero revenue chart left (60%), 3 stat cards stacked right (40%), dark footer with forward outlook'",
+            },
             cover_panel: {
               type: "object",
               properties: {

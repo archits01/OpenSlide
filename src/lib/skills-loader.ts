@@ -89,14 +89,38 @@ export function loadSkills(skillsDir?: string): Skill[] {
   return skills;
 }
 
-export function buildSkillsSection(skills: Skill[], stripShared = false): string {
-  if (!skills.length) return "";
+/**
+ * Build the "## Available Skills" section of the system prompt.
+ *
+ * When a brand skill is provided:
+ *  - Disk skills' body (presentation-type rules, slide-type guidance, etc.) is kept,
+ *    but their sharedBody (generic design-system + layout-library) is stripped —
+ *    the brand skill replaces those with brand-specific equivalents.
+ *  - The brand skill is appended last so it has highest recency in the prompt.
+ *
+ * When no brand skill is provided, disk skills emit their full content
+ * (body + sharedBody) as before.
+ */
+export function buildSkillsSection(
+  skills: Skill[],
+  options: { brandSkill?: Skill } = {},
+): string {
+  const { brandSkill } = options;
+  if (!skills.length && !brandSkill) return "";
 
-  const sections = skills.map((s) => {
+  const renderSkill = (s: Skill, includeShared: boolean): string => {
     const header = `### Skill: ${s.name}${s.description ? `\n_${s.description}_` : ""}`;
-    const content = stripShared ? s.body : s.body + s.sharedBody;
+    const content = includeShared ? s.body + s.sharedBody : s.body;
     return `${header}\n\n${content}`;
-  });
+  };
+
+  const sections: string[] = skills.map((s) =>
+    renderSkill(s, /* includeShared */ !brandSkill),
+  );
+
+  if (brandSkill) {
+    sections.push(renderSkill(brandSkill, /* includeShared */ true));
+  }
 
   return `## Available Skills\n\n${sections.join("\n\n---\n\n")}`;
 }

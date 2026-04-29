@@ -360,19 +360,18 @@ html, body { margin: 0; padding: 0; overflow: hidden; width: 816px; height: 1056
 ```
 
 ## Page Footer (Repeats on Every Content Page)
+
+The canvas defines `.page-footer` globally, with:
+`margin-top:auto` (pins to page bottom), flex layout with space-between, top border, 9px uppercase left span, 10px right span for page number. Just emit:
+
 ```html
-<div style="display: flex; justify-content: space-between; align-items: center;
-            padding-top: 12px; border-top: 1px solid #E5E7EB;
-            margin-top: auto; flex-shrink: 0;">
-  <span style="font-size: 9px; font-weight: 600; color: #9CA3AF;
-               text-transform: uppercase; letter-spacing: 1.5px;">
-    Confidential — Internal Use Only
-  </span>
-  <span style="font-size: 10px; font-weight: 600; color: #9CA3AF;">
-    Page 3
-  </span>
+<div class="page-footer">
+  <span>Confidential — Internal Use Only</span>
+  <span>Page 3</span>
 </div>
 ```
+
+Do NOT re-declare the styles inline — it adds noise and can conflict with the global class.
 
 ---
 

@@ -20,7 +20,8 @@ var SKIP_TAG=new Set(['SCRIPT','STYLE','META','LINK','HEAD','HTML','NOSCRIPT','B
 var INLINE=new Set(['SPAN','A','STRONG','EM','B','I','U','SMALL','MARK','SUB','SUP','LABEL','ABBR','CITE','CODE','KBD','Q','S','TIME','VAR','WBR','FONT']);
 var counter=0;
 function nextId(p){counter++;return p+counter;}
-function trueOffset(el){var x=0,y=0,w=el.offsetWidth,h=el.offsetHeight,cur=el;while(cur&&cur!==document.body){x+=cur.offsetLeft||0;y+=cur.offsetTop||0;cur=cur.offsetParent;}return{x:x,y:y,w:w,h:h};}
+function positionedAnchor(el){var p=el.parentElement;while(p&&p!==document.body){var pos=window.getComputedStyle(p).position;if(pos!=='static')return p;p=p.parentElement;}return document.body;}
+function trueOffset(el){var anchor=positionedAnchor(el);var er=el.getBoundingClientRect();var ar=anchor.getBoundingClientRect();return{x:Math.round(er.left-ar.left),y:Math.round(er.top-ar.top),w:Math.round(er.width),h:Math.round(er.height)};}
 function shouldTag(el){if(SKIP_TAG.has(el.tagName))return false;if((el.innerText||'').trim()==='')return false;var blockKids=Array.from(el.children).filter(function(k){return!SKIP_TAG.has(k.tagName)&&!INLINE.has(k.tagName);});return blockKids.length===0;}
 function wrapBareTextNodes(){var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(node){var txt=(node.nodeValue||'').trim();if(!txt)return NodeFilter.FILTER_REJECT;var p=node.parentElement;if(!p||SKIP_TAG.has(p.tagName))return NodeFilter.FILTER_REJECT;if(shouldTag(p))return NodeFilter.FILTER_REJECT;return NodeFilter.FILTER_ACCEPT;}});var nodes=[],n;while((n=walker.nextNode()))nodes.push(n);nodes.forEach(function(node){var span=document.createElement('span');span.dataset.eid=nextId('t');span.dataset.etype='text';span.dataset.bareWrapped='1';node.parentNode.replaceChild(span,node);span.appendChild(node);});}
 function tagElements(){document.querySelectorAll('*').forEach(function(el){if(el.dataset&&el.dataset.eid)return;if(el.tagName==='IMG'){el.dataset.eid=nextId('img');el.dataset.etype='img';return;}if(shouldTag(el)){el.dataset.eid=nextId('e');el.dataset.etype='text';}});}
@@ -28,7 +29,7 @@ wrapBareTextNodes();tagElements();
 var st=document.createElement('style');
 st.textContent='[data-eid][data-etype="text"]:hover{outline:2px dashed rgba(16,185,129,0.6)!important;outline-offset:2px;cursor:text;}[data-eid][data-etype="img"]:hover{outline:2px dashed rgba(245,158,11,0.7)!important;cursor:pointer;}[data-eid].esel{outline:none!important;}.__ghost{visibility:hidden;pointer-events:none;flex-shrink:0;}';
 document.head.appendChild(st);
-function freezeInPlace(el){if(el.dataset.frozen==='1')return;var p=trueOffset(el);var ghost=document.createElement('div');ghost.className='__ghost';ghost.style.width=p.w+'px';ghost.style.height=p.h+'px';var disp=window.getComputedStyle(el).display;ghost.style.display=(disp==='inline'||disp==='inline-block'||disp==='inline-flex')?'inline-block':disp;ghost.dataset.ghostFor=el.dataset.eid;el.parentNode.insertBefore(ghost,el);el.style.position='absolute';el.style.left=p.x+'px';el.style.top=p.y+'px';el.style.width=p.w+'px';el.style.margin='0';el.dataset.frozen='1';}
+function freezeInPlace(el){if(el.dataset.frozen==='1')return;var er=el.getBoundingClientRect();var w=el.offsetWidth,h=el.offsetHeight;var disp=window.getComputedStyle(el).display;var ghost=document.createElement('div');ghost.className='__ghost';ghost.style.width=w+'px';ghost.style.height=h+'px';ghost.style.display=(disp==='inline'||disp==='inline-block'||disp==='inline-flex')?'inline-block':disp;ghost.dataset.ghostFor=el.dataset.eid;el.parentNode.insertBefore(ghost,el);el.style.position='absolute';el.style.margin='0';el.style.width=w+'px';var op=el.offsetParent||document.body;var opR=op.getBoundingClientRect();el.style.left=Math.round(er.left-opR.left)+'px';el.style.top=Math.round(er.top-opR.top)+'px';el.dataset.frozen='1';}
 var selId=null;
 var _hist=[];var _redo=[];var _hasTextChanges=false;var _textHist=[];var _pendingSnap=null;
 function broadcastHist(){window.parent.postMessage({type:'histstate',canUndo:_hist.length>0||_hasTextChanges,canRedo:_redo.length>0},'*');}
@@ -261,7 +262,7 @@ interface SlideCanvasProps {
   theme: ThemeName;
   logoResult?: LogoResult | null;
   themeColors?: ThemeColors;
-  sessionType?: "slides" | "docs";
+  sessionType?: "slides" | "docs" | "sheets" | "website";
   isEditMode?: boolean;
   onActiveSlideChange?: (id: string) => void;
   onSlidesEdited?: (updates: Array<{ id: string; content: string }>) => void;
@@ -1559,14 +1560,16 @@ window.parent.postMessage({type:'finishedReady'},'*');
         ) : isFullDoc || isDoc ? (
           /* Full HTML doc slides or doc pages — use srcDoc directly.
              Doc pages have no .slide-root class so the postMessage bridge
-             selector would fail and leave a blank iframe. */
+             selector would fail and leave a blank iframe.
+             Sheets (isFullDoc=true) need allow-scripts for tab switching and
+             pointer-events for scrolling/clicking. */
           <iframe
             key={`${slide.id}-${slide.content.length}`}
             srcDoc={html}
             title={slide.title}
-            sandbox="allow-same-origin"
-            scrolling="no"
-            style={{ display: "block", width: nativeW, height: nativeH, border: "none", pointerEvents: "none" }}
+            sandbox={isFullDoc && !isDoc ? "allow-scripts allow-same-origin" : "allow-same-origin"}
+            scrolling="auto"
+            style={{ display: "block", width: nativeW, height: nativeH, border: "none", pointerEvents: isFullDoc && !isDoc ? "auto" : "none" }}
           />
         ) : (
           /* Fragment slides — stable iframe, content updates via postMessage (no flash) */
@@ -1630,7 +1633,7 @@ function CopyButton({ content }: { content: string }) {
 
 // ─── CodeView ─────────────────────────────────────────────────────────────────
 
-export function CodeView({ slides, sessionType = "slides" }: { slides: Slide[]; sessionType?: "slides" | "docs" }) {
+export function CodeView({ slides, sessionType = "slides" }: { slides: Slide[]; sessionType?: "slides" | "docs" | "sheets" | "website" }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(800);
 
@@ -1652,8 +1655,8 @@ export function CodeView({ slides, sessionType = "slides" }: { slides: Slide[]; 
   const SLIDE_GAP = 16;
   const SLIDE_PADDING_TOP = 16;
 
-  const nativeW = sessionType === "docs" ? 816 : 1280;
-  const nativeH = sessionType === "docs" ? 1056 : 720;
+  const nativeW = sessionType === "sheets" ? 1280 : sessionType === "docs" ? 816 : 1280;
+  const nativeH = sessionType === "sheets" ? 800 : sessionType === "docs" ? 1056 : 720;
   const slideWidth = Math.max(containerWidth - SLIDE_PADDING_X * 2, 0);
   const scale = slideWidth / nativeW;
   const slideHeight = Math.round(nativeH * scale);
@@ -1872,9 +1875,9 @@ export const SlideCanvas = forwardRef<SlideCanvasHandle, SlideCanvasProps>(
     { slides, theme, logoResult, themeColors, sessionType = "slides", isEditMode, onActiveSlideChange, onSlidesEdited, onAddToChat, onAttachSlide, buildingSlide, onEditHistChange, onRegenerate },
     ref
   ) {
-    // Native dimensions: landscape for slides, portrait for docs
-    const NATIVE_W = sessionType === "docs" ? 816 : 1280;
-    const NATIVE_H = sessionType === "docs" ? 1056 : 720;
+    // Native dimensions: landscape for slides/sheets, portrait for docs
+    const NATIVE_W = sessionType === "sheets" ? 1280 : sessionType === "docs" ? 816 : 1280;
+    const NATIVE_H = sessionType === "sheets" ? 800 : sessionType === "docs" ? 1056 : 720;
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const [containerWidth, setContainerWidth] = useState(800);
@@ -2071,7 +2074,7 @@ export const SlideCanvas = forwardRef<SlideCanvasHandle, SlideCanvasProps>(
               </div>
             </div>
             <p style={{ fontSize: 12.5, color: "var(--text3)", letterSpacing: "-0.01em", fontWeight: 400 }}>
-              {sessionType === "docs" ? "Pages will appear here as the agent creates them" : "Slides will appear here as the agent creates them"}
+              {sessionType === "sheets" ? "Spreadsheet will appear here as the agent creates it" : sessionType === "docs" ? "Pages will appear here as the agent creates them" : "Slides will appear here as the agent creates them"}
             </p>
           </div>
         ) : (

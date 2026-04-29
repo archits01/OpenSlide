@@ -29,9 +29,11 @@ The more specific, the faster it gets fixed.
 Open an issue before writing any code. Describe the **problem** you're trying to solve, not the solution. This lets us align on whether it fits the project direction before anyone spends time building it.
 
 Features that are clearly in scope:
-- Improvements to the agent loop, tools, or skill system
-- New slide/document output formats or themes
-- Better integrations (MCP tools, connectors)
+- Improvements to the agent loop, subagents, tools, or skill system
+- New slide / doc / sheet / website output formats, themes, or templates
+- Brand kit extraction quality
+- Better OAuth connectors (Gmail, Drive, Sheets, GitHub, Slack, etc.)
+- Website-mode capabilities (deploy targets, click-to-edit, vision review)
 - Performance, UX, or accessibility improvements
 
 Features that won't be accepted:

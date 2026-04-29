@@ -59,7 +59,9 @@ export default function ApiKeysPage() {
         API Keys
       </h1>
       <p style={{ color: 'var(--text2)', fontSize: '14px', marginBottom: '24px' }}>
-        Use API keys to let external apps create presentations in your account via the MCP protocol.
+        Generate an API key to create and edit presentations programmatically.
+        Useful for custom integrations, CI pipelines, or AI agents. See the Usage
+        section below for endpoints and examples.
       </p>
 
       {newKey && (

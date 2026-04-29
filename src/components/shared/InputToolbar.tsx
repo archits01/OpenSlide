@@ -9,13 +9,14 @@ import {
   ArrowUp02Icon,
   StopCircleIcon,
   Cancel01Icon,
-  Mic02Icon,
   PlusSignIcon,
+  AppStoreIcon,
 } from "@hugeicons/core-free-icons";
 import { ConnectorPopover } from "@/components/shared/ConnectorPopover";
 import { ConnectorModal } from "@/components/shared/ConnectorModal";
-import { AttachmentPopover } from "@/components/shared/AttachmentPopover";
+import { AttachmentPopover, TelescopeIcon } from "@/components/shared/AttachmentPopover";
 import { AssetPickerModal } from "@/components/shared/AssetPickerModal";
+import { Tooltip } from "@/components/shared/Tooltip";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 const PLACEHOLDERS = [
@@ -61,6 +62,51 @@ const letterVariants = {
   },
 };
 
+type Mode = "slides" | "docs" | "sheets" | "website";
+
+const MODES: { id: Mode; label: string; icon: React.ReactNode }[] = [
+  {
+    id: "slides",
+    label: "Slides",
+    icon: (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="12" rx="2" />
+        <path d="M8 20h8" />
+        <path d="M12 16v4" />
+      </svg>
+    ),
+  },
+  {
+    id: "docs",
+    label: "Docs",
+    icon: (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+      </svg>
+    ),
+  },
+  {
+    id: "sheets",
+    label: "Sheets",
+    icon: (
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <path d="M3 9h18" />
+        <path d="M3 15h18" />
+        <path d="M9 3v18" />
+      </svg>
+    ),
+  },
+  {
+    id: "website",
+    label: "App",
+    icon: (
+      <HugeiconsIcon icon={AppStoreIcon} size={10} strokeWidth={2} />
+    ),
+  },
+];
+
 interface SelectedTemplate {
   title: string;
   bg: string;
@@ -82,7 +128,7 @@ export interface PendingAttachment {
 }
 
 interface InputToolbarProps {
-  onSend: (message: string, options?: { deepResearch?: boolean; docsMode?: boolean; attachments?: PendingAttachment[] }) => void;
+  onSend: (message: string, options?: { deepResearch?: boolean; docsMode?: boolean; sheetsMode?: boolean; websiteMode?: boolean; discussMode?: boolean; attachments?: PendingAttachment[] }) => void;
   isStreaming?: boolean;
   onStop?: () => void;
   placeholder?: string;
@@ -91,8 +137,27 @@ interface InputToolbarProps {
   onClearTemplate?: () => void;
   animatedPlaceholder?: boolean;
   focusAnimation?: boolean;
-  sessionType?: "slides" | "docs";
+  sessionType?: "slides" | "docs" | "sheets" | "website";
   sessionId?: string;
+  /** When this object reference changes, the textarea is pre-filled with the
+   *  supplied text and focused. Powers click-to-edit from the preview iframe.
+   *  Pass `{ text, nonce }` where `nonce` is a counter so identical prefills
+   *  still re-trigger. */
+  prefill?: { text: string; nonce: number } | null;
+  /** Fires whenever the active tab changes (slides/docs/sheets/website).
+   *  Lets the parent react — e.g. swap the template gallery on the home page. */
+  onModeChange?: (mode: "slides" | "docs" | "sheets" | "website") => void;
+  /** Fires when the Build/Chat toggle changes (website mode only). */
+  onChatModeChange?: (mode: "build" | "discuss") => void;
+  /** Render the top tab strip (Slides / Docs / Sheets / App). Only relevant on
+   *  the explore page where the user PICKS a mode. Inside an editor session
+   *  the mode is locked by `sessionType`, so tabs would be redundant. */
+  showModeTabs?: boolean;
+  /** Optional node rendered inline in the left side of the action row, after
+   *  the connector button and before the Build/Chat toggle. Used by the home
+   *  page to slot in a brand-kit picker so it lives WITH the other prompt
+   *  modifiers instead of floating above the bar. */
+  leftAccessory?: React.ReactNode;
 }
 
 
@@ -109,6 +174,11 @@ export function InputToolbar({
   focusAnimation = false,
   sessionType,
   sessionId,
+  prefill,
+  onModeChange,
+  onChatModeChange,
+  showModeTabs = false,
+  leftAccessory,
 }: InputToolbarProps) {
   const [value, setValue] = useState("");
   const [isAnimating, setIsAnimating] = useState(false);
@@ -119,7 +189,18 @@ export function InputToolbar({
   const [transcript, setTranscript] = useState(""); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [deepResearch, setDeepResearch] = useState(false);
+  const [deepResearchHovered, setDeepResearchHovered] = useState(false);
+
+  // Reset hover state when Deep Research toggles so the pill always
+  // mounts in its idle (telescope) look, not in the stale hover look.
+  useEffect(() => {
+    setDeepResearchHovered(false);
+  }, [deepResearch]);
   const [docsMode, setDocsMode] = useState(false);
+  const [sheetsMode, setSheetsMode] = useState(false);
+  const [websiteMode, setWebsiteMode] = useState(false);
+  const [websiteDesktopOnlyModal, setWebsiteDesktopOnlyModal] = useState(false);
+  const [chatMode, setChatModeState] = useState<"build" | "discuss">("build");
   const [connectorsOpen, setConnectorsOpen] = useState(false);
   const [connectorModalOpen, setConnectorModalOpen] = useState(false);
   const connectorBtnRef = useRef<HTMLButtonElement>(null);
@@ -130,13 +211,77 @@ export function InputToolbar({
   // Lock toggles to session type — once a session is docs or has deep research, keep it on
   const isDocsLocked = sessionType === "docs";
   const effectiveDocsMode = isDocsLocked || docsMode;
+  const isSheetsLocked = sessionType === "sheets";
+  const effectiveSheetsMode = isSheetsLocked || sheetsMode;
+  const isWebsiteLocked = sessionType === "website";
+  const effectiveWebsiteMode = isWebsiteLocked || websiteMode;
+
+  const activeMode: Mode =
+    effectiveDocsMode ? "docs" :
+    effectiveSheetsMode ? "sheets" :
+    effectiveWebsiteMode ? "website" :
+    "slides";
+  const lockedMode: Mode | null = isDocsLocked ? "docs" : isSheetsLocked ? "sheets" : isWebsiteLocked ? "website" : null;
+
+  // Notify parent whenever the derived mode changes
+  useEffect(() => {
+    onModeChange?.(activeMode);
+  }, [activeMode, onModeChange]);
+
+  function setChatMode(m: "build" | "discuss") {
+    setChatModeState(m);
+    onChatModeChange?.(m);
+  }
+
   const [plusHovered, setPlusHovered] = useState(false);
+  const [connectorsHovered, setConnectorsHovered] = useState(false);
   const [micHovered, setMicHovered] = useState(false);
   const isMobile = useIsMobile();
+
+  function selectMode(m: Mode) {
+    if (lockedMode) return;
+    if (m === "website" && isMobile) { setWebsiteDesktopOnlyModal(true); return; }
+    setDocsMode(m === "docs");
+    setSheetsMode(m === "sheets");
+    setWebsiteMode(m === "website");
+    setDeepResearch(false);
+  }
+
+  // Tab-strip geometry — measured so the SVG path can be drawn with the folder-tab tail
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [tabGeo, setTabGeo] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = tabsRef.current;
+    if (!el) return;
+    const measure = () => setTabGeo({ w: el.offsetWidth, h: el.offsetHeight });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, []);
   // Card geometry: w/h for SVG border glow, centerX/clipTop for blob positioning
   const [cardGeo, setCardGeo] = useState({ w: 0, h: 0, centerX: 0, clipTop: 0 });
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ─── External prefill (click-to-edit from preview iframe) ────────────
+  // Watch prefill.nonce so identical repeat prefills still re-trigger.
+  const lastPrefillNonceRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!prefill) return;
+    if (lastPrefillNonceRef.current === prefill.nonce) return;
+    lastPrefillNonceRef.current = prefill.nonce;
+    setValue(prefill.text);
+    // Defer focus so the browser finishes its own event cycle first
+    setTimeout(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      ta.focus();
+      // Place cursor at end so user can immediately type the change they want
+      const end = ta.value.length;
+      ta.setSelectionRange(end, end);
+    }, 30);
+  }, [prefill]);
   const cardRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -490,9 +635,12 @@ export function InputToolbar({
     if ((!msg && !readyAttachments.length) || isStreaming || disabled) return;
     setValue("");
     setPendingAttachments([]);
-    const opts: { deepResearch?: boolean; docsMode?: boolean; attachments?: PendingAttachment[] } = {};
+    const opts: { deepResearch?: boolean; docsMode?: boolean; sheetsMode?: boolean; websiteMode?: boolean; discussMode?: boolean; attachments?: PendingAttachment[] } = {};
     if (deepResearch) opts.deepResearch = true;
     if (effectiveDocsMode) opts.docsMode = true;
+    if (effectiveSheetsMode) opts.sheetsMode = true;
+    if (effectiveWebsiteMode) opts.websiteMode = true;
+    if (effectiveWebsiteMode && chatMode === "discuss") opts.discussMode = true;
     if (readyAttachments.length) opts.attachments = readyAttachments;
     onSend(msg, Object.keys(opts).length ? opts : undefined);
   }
@@ -552,6 +700,191 @@ export function InputToolbar({
         </div>,
         document.body
       )}
+
+      {/* Composer: tab strip (lighter glass) sits BEHIND the card, with
+          a folder-tab outward curve on the right edge that lands on the card's top.
+          Matches the handoff design 1:1. */}
+      <div style={{ position: "relative", textAlign: "left" }}>
+
+      {/* ─── Tab strip (only on the explore page — in editor the mode is locked) ─── */}
+      {showModeTabs && (() => {
+        const W = tabGeo.w;
+        const H = tabGeo.h;
+        const rTop = 20;    // top corners
+        const rTail = 22;   // outward folder-tab tail radius
+        const overlap = 28; // card overlaps strip's lower portion (matches marginBottom: -28)
+        const baseY = Math.max(0, H - overlap);
+        const svgW = W + rTail;
+        const svgH = H + 2;
+        const pathD = W > 0 && H > 0
+          ? [
+              `M 0 ${H}`,
+              `L 0 ${rTop}`,
+              `Q 0 0 ${rTop} 0`,
+              `L ${W - rTop} 0`,
+              `Q ${W} 0 ${W} ${rTop}`,
+              `L ${W} ${baseY - rTail}`,
+              `Q ${W} ${baseY} ${W + rTail} ${baseY}`,
+              `L ${W + rTail} ${H}`,
+              `L 0 ${H}`,
+              "Z",
+            ].join(" ")
+          : "";
+        const strokeD = W > 0 && H > 0
+          ? [
+              `M 0 ${baseY}`,
+              `L 0 ${rTop}`,
+              `Q 0 0 ${rTop} 0`,
+              `L ${W - rTop} 0`,
+              `Q ${W} 0 ${W} ${rTop}`,
+              `L ${W} ${baseY - rTail}`,
+              `Q ${W} ${baseY} ${W + rTail} ${baseY}`,
+            ].join(" ")
+          : "";
+        return (
+          <div
+            style={{
+              position: "relative",
+              display: "inline-block",
+              marginBottom: -overlap,
+              zIndex: 1, // BEHIND the card (card has zIndex: 10)
+            }}
+          >
+            {/* Background shape — flush-left with card, right edge curves outward into card top */}
+            <svg
+              aria-hidden
+              width={svgW}
+              height={svgH}
+              viewBox={`0 0 ${svgW} ${svgH}`}
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                overflow: "visible",
+                pointerEvents: "none",
+                zIndex: 0,
+                display: "block",
+              }}
+            >
+              <defs>
+                <linearGradient id="tabTopHighlight" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.06)" />
+                  <stop offset="40%" stopColor="rgba(255,255,255,0.02)" />
+                  <stop offset="100%" stopColor="rgba(255,255,255,0)" />
+                </linearGradient>
+              </defs>
+              {pathD && (
+                <>
+                  <path d={pathD} fill="#1E191C" />
+                  <path d={pathD} fill="url(#tabTopHighlight)" />
+                  {strokeD && (
+                    <path
+                      d={strokeD}
+                      fill="none"
+                      stroke="rgba(255,255,255,0.08)"
+                      strokeWidth={1}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                </>
+              )}
+            </svg>
+
+            {/* Tabs row */}
+            <div
+              ref={tabsRef}
+              role="tablist"
+              style={{
+                position: "relative",
+                zIndex: 1,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 4px 32px",
+              }}
+            >
+              {MODES.map(({ id, label, icon }) => {
+                const isActive = activeMode === id;
+                const isDisabled = !!lockedMode && lockedMode !== id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    onClick={() => selectMode(id)}
+                    disabled={isDisabled}
+                    onMouseEnter={(e) => {
+                      if (!isActive && !isDisabled) {
+                        (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.04)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive) {
+                        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                      }
+                    }}
+                    style={{
+                      position: "relative",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "0 14px",
+                      height: 34,
+                      border: "none",
+                      background: "transparent",
+                      color: isActive ? "#fff" : "rgba(255,255,255,0.5)",
+                      fontSize: 13.5,
+                      fontWeight: 500,
+                      letterSpacing: "-0.005em",
+                      borderRadius: 999,
+                      cursor: isDisabled ? "not-allowed" : "pointer",
+                      opacity: isDisabled ? 0.35 : 1,
+                      transition: "color 240ms",
+                      whiteSpace: "nowrap",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    {/* Shared layoutId pill — Framer auto-animates between tabs */}
+                    {isActive && (
+                      <motion.span
+                        layoutId="composer-tab-pill"
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          borderRadius: 999,
+                          background: "linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04))",
+                          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.14), inset 0 0 0 1px rgba(255,255,255,0.05)",
+                          zIndex: 0,
+                        }}
+                        transition={{ type: "spring", bounce: 0.15, duration: 0.45 }}
+                      />
+                    )}
+                    <span
+                      style={{
+                        position: "relative",
+                        zIndex: 1,
+                        width: 18,
+                        height: 18,
+                        display: "grid",
+                        placeItems: "center",
+                        borderRadius: "50%",
+                        background: isActive
+                          ? "linear-gradient(135deg, var(--accent), var(--accent-hover))"
+                          : "rgba(255,255,255,0.08)",
+                        color: isActive ? "#fff" : "rgba(255,255,255,0.75)",
+                        transition: "background 240ms, color 240ms",
+                      }}
+                    >
+                      {icon}
+                    </span>
+                    <span style={{ position: "relative", zIndex: 1 }}>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Input wrapper — relative so SVG glow positions correctly */}
       <div className="relative">
@@ -724,21 +1057,15 @@ export function InputToolbar({
           <AnimatePresence>
             {pendingAttachments.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
-                animate={{ opacity: 1, height: "auto", marginBottom: 10 }}
-                exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                transition={{ type: "spring", stiffness: 400, damping: 32 }}
-                style={{ overflow: "hidden" }}
+                initial={{ opacity: 0, marginBottom: 0 }}
+                animate={{ opacity: 1, marginBottom: 10 }}
+                exit={{ opacity: 0, marginBottom: 0 }}
+                transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
               >
                 <div className="flex flex-wrap gap-2" style={{ padding: "4px 0 2px" }}>
-                  <AnimatePresence>
                     {pendingAttachments.map((att) => (
-                      <motion.div
+                      <div
                         key={att.id}
-                        initial={{ opacity: 0, scale: 0.88, y: 6 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.88, y: -4 }}
-                        transition={{ type: "spring", stiffness: 380, damping: 26 }}
                         className="inline-flex items-center gap-1.5 relative"
                         style={{
                           padding: "5px 8px 5px 10px",
@@ -806,9 +1133,8 @@ export function InputToolbar({
                             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                           </svg>
                         </button>
-                      </motion.div>
+                      </div>
                     ))}
-                  </AnimatePresence>
                 </div>
               </motion.div>
             )}
@@ -894,9 +1220,9 @@ export function InputToolbar({
           <div className="flex items-center mt-4" style={{ gap: 8 }}>
             {/* Attachment */}
             <div style={{ position: "relative" }}>
+              <Tooltip show={plusHovered && !attachPopoverOpen} label="Add files and more" />
               <motion.button
                 ref={attachBtnRef}
-                title="Attach file"
                 onClick={handleAttachClick}
                 onHoverStart={() => setPlusHovered(true)}
                 onHoverEnd={() => setPlusHovered(false)}
@@ -921,6 +1247,12 @@ export function InputToolbar({
                 anchorRef={attachBtnRef}
                 onUpload={() => fileInputRef.current?.click()}
                 onAssets={() => setAssetPickerOpen(true)}
+                deepResearch={deepResearch}
+                onToggleDeepResearch={() => {
+                  setDeepResearch((p) => !p);
+                  if (!isDocsLocked) setDocsMode(false);
+                  setSheetsMode(false);
+                }}
               />
             </div>
             <AssetPickerModal
@@ -930,27 +1262,35 @@ export function InputToolbar({
               onAttach={handleAssetsAttached}
             />
 
-            {/* Connectors pill — opens quick popover, "+ Add connectors" opens full modal */}
-            <div style={{ position: "relative" }}>
-              <button
+            {/* Connectors — icon-only circular button, same interaction pattern as + */}
+            <div style={{ position: "relative", marginLeft: -8 }}>
+              <Tooltip show={connectorsHovered && !connectorsOpen} label="Connect apps" />
+              <motion.button
                 ref={connectorBtnRef}
-                title="Connect external tools (Gmail, GitHub, etc.)"
                 onClick={() => setConnectorsOpen((p) => !p)}
-                className={`deep-research-pill flex items-center gap-1.5 rounded-full ${connectorsOpen ? "active" : ""}`}
-                style={{
-                  padding: isMobile ? "7px 9px" : "5px 12px 5px 9px",
-                  fontSize: 12.5,
-                  fontWeight: 500,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
+                onHoverStart={() => setConnectorsHovered(true)}
+                onHoverEnd={() => setConnectorsHovered(false)}
+                aria-label="Connectors"
+                className="relative w-9 h-9 rounded-[var(--r-md)] flex items-center justify-center"
+                style={{ color: connectorsHovered ? "var(--text)" : "var(--text2)" }}
+                whileTap={{ scale: 0.88 }}
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                </svg>
-                {!isMobile && <span>Connectors</span>}
-              </button>
+                <motion.span
+                  className="absolute inset-0 rounded-full"
+                  style={{ background: "var(--accent)", transformOrigin: "center" }}
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={connectorsOpen || connectorsHovered ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
+                  transition={{ type: "spring", stiffness: 380, damping: 22 }}
+                />
+                <span className="relative z-10" style={{ color: connectorsOpen || connectorsHovered ? "var(--bg)" : "var(--text2)", transition: "color 0.12s", display: "inline-flex" }}>
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" shapeRendering="geometricPrecision">
+                    <path d="M9 2v6" />
+                    <path d="M15 2v6" />
+                    <path d="M6 8h12v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4z" />
+                    <path d="M12 17v5" />
+                  </svg>
+                </span>
+              </motion.button>
               <ConnectorPopover
                 open={connectorsOpen}
                 onClose={() => setConnectorsOpen(false)}
@@ -963,70 +1303,158 @@ export function InputToolbar({
               onClose={() => setConnectorModalOpen(false)}
             />
 
-            {/* Docs pill toggle */}
-            <button
-              title={effectiveDocsMode ? (isDocsLocked ? "Docs mode (locked for this session)" : "Docs mode ON — click to disable") : "Enable Docs mode"}
-              onClick={() => { if (isDocsLocked) return; setDocsMode((p) => !p); setDeepResearch(false); }}
-              className={`deep-research-pill flex items-center gap-1.5 rounded-full ${effectiveDocsMode ? "active" : ""}`}
-              style={{
-                padding: isMobile ? "7px 9px" : "5px 12px 5px 9px",
-                fontSize: 12.5,
-                fontWeight: 500,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              {!isMobile && <span>Docs</span>}
-            </button>
+            {/* Optional inline accessory (e.g. brand-kit picker on home page).
+                Slides-only — brand kits don't currently apply to docs / sheets
+                / website mode. When/if we extend brand-kit support to docs and
+                sheets, broaden this gate. */}
+            {leftAccessory && !effectiveDocsMode && !effectiveSheetsMode && !effectiveWebsiteMode && (
+              <div style={{ display: "inline-flex", alignItems: "center", marginLeft: 4 }}>
+                {leftAccessory}
+              </div>
+            )}
 
-            {/* Deep Research pill toggle */}
-            <button
-              title={deepResearch ? "Deep Research ON — click to disable" : "Enable Deep Research"}
-              onClick={() => { setDeepResearch((p) => !p); if (!isDocsLocked) setDocsMode(false); }}
-              className={`deep-research-pill flex items-center gap-1.5 rounded-full ${deepResearch ? "active" : ""}`}
-              style={{
-                padding: isMobile ? "7px 9px" : "5px 12px 5px 9px",
-                fontSize: 12.5,
-                fontWeight: 500,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.35-4.35" />
-              </svg>
-              {!isMobile && <span>Deep research</span>}
-            </button>
+            {/* Build / Chat toggle — website mode only */}
+            <AnimatePresence initial={false}>
+              {effectiveWebsiteMode && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, x: -4 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, x: -4 }}
+                  transition={{ duration: 0.15, ease: [0.25, 0.1, 0.25, 1] }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 999,
+                    padding: 3,
+                    flexShrink: 0,
+                    marginLeft: -4,
+                  }}
+                >
+                  {(["build", "discuss"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setChatMode(m)}
+                      style={{
+                        position: "relative",
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        fontSize: 12.5,
+                        fontWeight: 500,
+                        letterSpacing: "-0.01em",
+                        color: chatMode === m ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.35)",
+                        background: "transparent",
+                        border: "none",
+                        cursor: "pointer",
+                        transition: "color 150ms",
+                        whiteSpace: "nowrap",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {chatMode === m && (
+                        <motion.span
+                          layoutId="chat-mode-indicator"
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            borderRadius: 999,
+                            background: "rgba(255,255,255,0.1)",
+                            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
+                          }}
+                          transition={{ type: "spring", bounce: 0.12, duration: 0.35 }}
+                        />
+                      )}
+                      <span style={{ position: "relative", zIndex: 1 }}>
+                        {m === "build" ? "Build" : "Chat"}
+                      </span>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Active Deep Research indicator — appears when ON, click to disable */}
+            <AnimatePresence initial={false}>
+              {deepResearch && (
+                <motion.button
+                  key="deep-research-active-pill"
+                  type="button"
+                  title="Click to disable Deep Research"
+                  onClick={() => setDeepResearch(false)}
+                  onMouseEnter={() => setDeepResearchHovered(true)}
+                  onMouseLeave={() => setDeepResearchHovered(false)}
+                  initial={{ opacity: 0, scale: 0.9, x: -6 }}
+                  animate={{ opacity: 1, scale: 1, x: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, x: -6 }}
+                  transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
+                  style={{
+                    marginLeft: -6,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 7,
+                    padding: "6px 13px 6px 10px",
+                    borderRadius: 999,
+                    border: `1px solid ${deepResearchHovered ? "rgba(194,24,91,0.3)" : "transparent"}`,
+                    background: deepResearchHovered ? "var(--accent-soft)" : "transparent",
+                    color: "var(--accent)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    letterSpacing: "-0.005em",
+                    WebkitFontSmoothing: "antialiased",
+                    MozOsxFontSmoothing: "grayscale",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "background 150ms, border-color 150ms",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span style={{ display: "inline-flex", width: 15, height: 15, alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {deepResearchHovered ? (
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" shapeRendering="geometricPrecision">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    ) : (
+                      <TelescopeIcon color="currentColor" size={15} />
+                    )}
+                  </span>
+                  <span>Deep research</span>
+                </motion.button>
+              )}
+            </AnimatePresence>
 
             <div className="flex-1" />
 
             {/* Mic — normal state */}
             {!isListening && (
-              <motion.button
-                title="Voice input"
-                onClick={handleMicClick}
-                onHoverStart={() => setMicHovered(true)}
-                onHoverEnd={() => setMicHovered(false)}
-                className="relative w-9 h-9 rounded-[var(--r-md)] flex items-center justify-center"
-                style={{ color: "var(--text2)" }}
-                whileTap={{ scale: 0.88 }}
-              >
-                <motion.span
-                  className="absolute inset-0 rounded-full"
-                  style={{ background: "var(--accent)", transformOrigin: "center" }}
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={micHovered ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 380, damping: 22 }}
-                />
-                <span className="relative z-10" style={{ color: micHovered ? "var(--bg)" : "var(--text)", transition: "color 0.12s" }}>
-                  <HugeiconsIcon icon={Mic02Icon} size={17} />
-                </span>
-              </motion.button>
+              <div style={{ position: "relative" }}>
+                <Tooltip show={micHovered} label="Voice input" />
+                <motion.button
+                  onClick={handleMicClick}
+                  onHoverStart={() => setMicHovered(true)}
+                  onHoverEnd={() => setMicHovered(false)}
+                  className="relative w-9 h-9 rounded-[var(--r-md)] flex items-center justify-center"
+                  style={{ color: "var(--text2)" }}
+                  whileTap={{ scale: 0.88 }}
+                >
+                  <motion.span
+                    className="absolute inset-0 rounded-full"
+                    style={{ background: "var(--accent)", transformOrigin: "center" }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={micHovered ? { scale: 1, opacity: 1 } : { scale: 0, opacity: 0 }}
+                    transition={{ type: "spring", stiffness: 380, damping: 22 }}
+                  />
+                  <span className="relative z-10" style={{ color: micHovered ? "var(--bg)" : "var(--text)", transition: "color 0.12s", display: "inline-flex" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" shapeRendering="geometricPrecision" vectorEffect="non-scaling-stroke">
+                      <rect x="9" y="3" width="6" height="11" rx="3" />
+                      <path d="M19 11v1a7 7 0 0 1-14 0v-1" />
+                      <line x1="12" y1="19" x2="12" y2="22" />
+                    </svg>
+                  </span>
+                </motion.button>
+              </div>
             )}
 
             {/* Voice mode: X (cancel) + Checkmark (accept) */}
@@ -1086,6 +1514,36 @@ export function InputToolbar({
         </div>
 
       </div>
+      </div>
+
+      {/* Website mode: desktop-only modal (shown when mobile user taps the Website pill) */}
+      {websiteDesktopOnlyModal && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-6"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          onClick={() => setWebsiteDesktopOnlyModal(false)}
+        >
+          <div
+            className="rounded-[var(--r-2xl)] p-6 max-w-sm w-full"
+            style={{ background: "var(--bg)", border: "1px solid var(--border)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+              App building is desktop-only
+            </div>
+            <div style={{ fontSize: 14, color: "var(--text2)", lineHeight: 1.5, marginBottom: 20 }}>
+              To build apps with AI, open OpenSlide on a desktop or laptop browser (Chrome, Edge, Arc, or Firefox). You can still view and chat on existing app sessions from your phone.
+            </div>
+            <button
+              onClick={() => setWebsiteDesktopOnlyModal(false)}
+              className="w-full rounded-[var(--r-lg)] py-2.5 text-sm font-medium"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

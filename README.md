@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="public/og-image.png" alt="OpenSlide" width="100%" />
-  
+  <img src="public/og-image.png" alt="OpenSlide — Your All-In-One AI Workspace" width="100%" />
+
   <br />
   <br />
 
@@ -21,7 +21,7 @@
 
   <br />
 
-  <h3>AI-powered presentations and documents.<br />Describe what you need. Watch it build.</h3>
+  <h3>Your all-in-one AI workspace.<br />Slides, docs, sheets &amp; websites — built on your brand.</h3>
 
   <br />
 </div>
@@ -30,24 +30,36 @@
 
 ## What is OpenSlide?
 
-OpenSlide is an AI agent for creating presentations and documents. You describe what you want in a chat interface — the agent builds polished slides in real time using tool calls. It connects to your tools (Google Drive, GitHub, and more) so it can work with your actual data, not just what you type.
+OpenSlide is an AI agent that builds **slides, documents, spreadsheets, and websites** from a single prompt. You describe what you want; the agent works in real time, calling tools to create and refine output as you watch. Drop in a brand kit (PPTX or PDF) and every output ships in your colors, fonts, and layout patterns.
 
-This is the open-source, self-hostable version. No credits, no paywalls. Just plug in your Anthropic API key and run.
+This is the open-source, self-hostable build. **No credits, no paywalls, no rate limits.** You bring your own API keys; the app stays out of the way.
 
 ---
 
 ## Features
 
-- **Chat-to-slides** — describe a presentation in plain English, get structured slides in seconds
-- **Real-time generation** — watch slides build live as the agent works
-- **Tool integrations** — connect Google Drive, GitHub, and more via MCP
-- **Document builder** — generate business documents, not just slide decks
-- **Deep research mode** — multi-agent research that pulls from the web before building
-- **Brand Kit** — upload your brand guidelines, apply them to every deck
-- **PDF & PPTX export** — pixel-perfect exports via Puppeteer
-- **Themes** — minimal, dark pro, academic, bold
-- **Public sharing** — share any presentation with a link
-- **Fully self-hostable** — your data, your infra, your API key
+### Four modes, one workspace
+
+- **Slides** — pitch decks, board reports, lecture decks. Six themes, charts, vision-driven design checks. PDF + PPTX export.
+- **Docs** — briefs, reports, proposals, long-form writing. Classifier-routed skills per document category.
+- **Sheets** — spreadsheets, financial models, dashboards, trackers. Univer-based editor with a custom Excel-style ribbon (~30 ribbon groups). XLSX export.
+- **Websites** — landing pages, microsites, MVPs. Built and previewed live in-browser via WebContainer; click any element to edit it; vision-driven self-review.
+
+### Brand Kits v2
+
+Upload a PPTX or PDF; the agent extracts colors, fonts, logos, and full layout patterns into a generated **skill** (`design-system.md`, `layout-library.md`, `SKILL.md`) injected into every prompt. Comes with version history and rollback.
+
+### Agent loop
+
+- Tool-calling agent built on the Anthropic Messages API (Sonnet 4.6 for slides/docs/sheets, Opus 4.7 for websites by default — both swappable).
+- **Subagents** with bounded spawn depth and Redis-gated concurrency — long-horizon work fans out without blocking the main thread.
+- **Vision review** — the agent screenshots its own output and critiques it against a rubric.
+- **Image search + generation** — `search_images` (Google Images via SearchAPI) and `generate_image` (fal.ai Flux schnell) so the agent never hand-writes broken `<img>` URLs.
+- **Compaction** — context auto-summarizes at ~50k tokens via Haiku 4.5.
+
+### Connectors
+
+OAuth integrations for Gmail, Google Drive, Google Sheets, GitHub, and Slack. Plus GitHub import + Vercel/GitHub deploy for the website mode.
 
 ---
 
@@ -55,12 +67,15 @@ This is the open-source, self-hostable version. No credits, no paywalls. Just pl
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) + TypeScript |
+| Framework | Next.js 16 (App Router) + TypeScript |
 | Auth | Supabase Auth (email + Google OAuth) |
-| Database | PostgreSQL via Supabase + Prisma ORM |
-| Cache | Upstash Redis (session cache, 1hr TTL) |
-| AI | Anthropic Claude (claude-sonnet-4-6) |
-| Export | Puppeteer + pdf-lib (PDF), pptxgenjs (PPTX) |
+| Database | PostgreSQL via Supabase + Prisma 7 |
+| Cache | Upstash Redis (session cache + subagent semaphore) |
+| AI | Anthropic Claude (Sonnet 4.6 / Opus 4.7 / Haiku 4.5) |
+| Sheets | Univer (full spreadsheet engine) |
+| Websites | StackBlitz WebContainer (in-browser sandbox) |
+| Export | Puppeteer + pdf-lib (PDF), pptxgenjs (PPTX), Univer (XLSX) |
+| Storage | Supabase Storage (brand assets, website snapshots, image proxy) |
 | Animations | Framer Motion |
 | Styling | Tailwind CSS + CSS custom properties |
 
@@ -72,11 +87,12 @@ This is the open-source, self-hostable version. No credits, no paywalls. Just pl
 git clone https://github.com/archits01/OpenSlide.git
 cd OpenSlide
 npm install
-cp .env.example .env.local
+cp .env.local.example .env.local   # fill in keys (see below)
+npx prisma migrate deploy
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Fill in your env vars first — see below.
+Open [http://localhost:3000](http://localhost:3000).
 
 ---
 
@@ -84,30 +100,39 @@ Open [http://localhost:3000](http://localhost:3000). Fill in your env vars first
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 24+
 - [Supabase](https://supabase.com) project (free tier works)
 - [Upstash Redis](https://upstash.com) database (free tier works)
 - [Anthropic API key](https://console.anthropic.com)
 
-### 1. Environment Variables
+### 1. Environment variables
 
 ```bash
-cp .env.example .env.local
+cp .env.local.example .env.local
 ```
 
-Minimum required:
+Required:
 
 ```env
 ANTHROPIC_API_KEY=sk-ant-...
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-DATABASE_URL=postgresql://...
-DIRECT_URL=postgresql://...
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+DATABASE_URL=postgresql://...               # Supabase pooler URL
+DIRECT_URL=postgresql://...                 # Supabase direct URL (migrations)
 UPSTASH_REDIS_REST_URL=https://...
 UPSTASH_REDIS_REST_TOKEN=...
+WEBSITE_ENV_ENCRYPTION_KEY=...              # 32 bytes base64; openssl rand -base64 32
 ```
 
-See [`.env.example`](.env.example) for all options.
+Optional (unlock specific features):
+
+```env
+SEARCH_KEY=...           # searchapi.io — enables search_images in website mode
+FAL_KEY=...              # fal.ai — enables generate_image (Flux schnell)
+PDF_SERVER_URL=...       # standalone PDF/PPTX server (see below)
+PDF_SERVER_SECRET=...
+```
 
 ### 2. Database
 
@@ -116,9 +141,9 @@ npx prisma migrate deploy
 npx prisma generate
 ```
 
-### 3. Supabase Auth Trigger
+### 3. Supabase auth trigger
 
-Run this once in your Supabase SQL editor — it creates a `public.users` row whenever someone signs up:
+Run this once in your Supabase SQL editor so a `public.users` row is created on signup:
 
 ```sql
 create or replace function public.handle_new_user()
@@ -141,7 +166,19 @@ create or replace trigger on_auth_user_created
   for each row execute procedure public.handle_new_user();
 ```
 
-### 4. Run
+### 4. Supabase Storage buckets
+
+Create three buckets in Supabase → Storage:
+
+| Bucket | Purpose | Public? |
+|---|---|---|
+| `brand-assets` | Brand kit logos and source files (PPTX/PDF) | Yes |
+| `website-images` | Image-search results, proxied for stable URLs | Yes |
+| `website-snapshots` | Tier-2 gzipped WebContainer snapshots | No |
+
+For website snapshots you may also need to raise the bucket file-size limit if your sites are large.
+
+### 5. Run
 
 ```bash
 npm run dev
@@ -149,11 +186,11 @@ npm run dev
 
 ---
 
-## PDF & PPTX Export (Optional)
+## PDF & PPTX export (optional)
 
-Export is handled by a separate Node.js server using Puppeteer — Vercel can't run Chromium.
+PDF and PPTX export run on a standalone Node.js server because Chromium is too large for Vercel. The XLSX export for sheets ships in-process and needs no extra server.
 
-**Run locally:**
+**Locally:**
 ```bash
 cd pdf-server
 npm install
@@ -166,17 +203,21 @@ PDF_SERVER_URL=http://localhost:3001
 PDF_SERVER_SECRET=any_secret_you_choose
 ```
 
-**On a VPS:**
+**On a VPS (one-time):**
 ```bash
 scp -r pdf-server/ root@your-vps:/opt/openslide-pdf
 ssh root@your-vps "cd /opt/openslide-pdf && bash setup.sh"
 ```
 
+If `PDF_SERVER_URL` is unset, the export buttons gracefully no-op.
+
 ---
 
-## Tool Integrations (MCP)
+## Connectors
 
-OpenSlide supports external tool connections via the Model Context Protocol. Set `MCP_SERVER_URL` in your env to activate Google Drive, GitHub, and other integrations.
+OpenSlide ships first-class OAuth flows for Gmail, Google Drive, Google Sheets, GitHub, and Slack. Each integration only loads its tools after the user connects, so they don't bloat the agent's context window.
+
+To enable a connector you need OAuth credentials from that provider; see [`src/lib/oauth-configs.ts`](src/lib/oauth-configs.ts) for the redirect URLs and required scopes.
 
 ---
 
@@ -187,24 +228,63 @@ npm run build   # verify locally first
 vercel --prod
 ```
 
-Set all env vars in the Vercel dashboard. The chat route is already configured with `maxDuration = 300` for long generations.
+Set all env vars in the Vercel dashboard. The chat route is configured with `maxDuration = 300` for long generations.
+
+> **Note:** the website-mode editor needs cross-origin isolation headers. They're already configured in [`next.config.ts`](next.config.ts) under `headers()`. If you proxy this app through your own infra, make sure those headers reach the browser.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 src/
-├── app/              # Next.js pages + API routes
-├── agent/            # Agent loop, tools, MCP, streaming
-├── components/       # UI — editor, layout, shared
-├── lib/              # DB, Redis, Supabase, utilities
-├── skills/           # Presentation & document skill definitions
-└── styles/           # Design tokens (CSS custom properties)
+├── app/                          # Next.js pages + API routes
+│   ├── editor/[sessionId]/       # Main editor (chat + canvas)
+│   ├── presentations/            # Slides library
+│   ├── docs/                     # Docs library
+│   ├── sheets/                   # Sheets library
+│   ├── websites/                 # Websites library
+│   ├── brand/                    # Brand kit list + detail + new
+│   └── api/                      # Route handlers (chat, sessions, brand-kits, etc.)
+├── agent/
+│   ├── loop.ts                   # Core agentic loop
+│   ├── stream.ts                 # SSE streaming + AbortController
+│   ├── compaction.ts             # Context summarization (Haiku 4.5)
+│   ├── system-prompt.ts          # Mode-aware prompt assembly
+│   ├── subagent/                 # Spawn registry, semaphore
+│   └── tools/                    # All agent tools (slides, sheets, website, brand, file ops)
+├── components/
+│   ├── editor/                   # SlideCanvas, SheetCanvas, website/, sheet/, ChatPanel
+│   ├── layout/                   # AppShell, Sidebar
+│   └── shared/                   # InputToolbar, KitPicker, AuthModal, etc.
+├── lib/
+│   ├── brand/                    # Brand-kit writer pipeline (extract, classify, render)
+│   ├── webcontainer/             # WebContainer hook + helpers
+│   ├── image-providers/          # search-images + image-proxy
+│   ├── sheet-engine.ts           # Headless Univer wrapper
+│   ├── encryption.ts             # AES-GCM for website env vars
+│   ├── redis.ts                  # Session cache + Postgres fallback
+│   └── supabase/                 # Server / browser clients
+├── skills/                       # Disk-based markdown skills (slide / doc / sheet categories)
+└── styles/                       # Design tokens (CSS custom properties) + sheet-theme.css
 
-pdf-server/           # Standalone Puppeteer export server
-prisma/               # Schema + migrations
+pdf-server/                       # Standalone Puppeteer export server
+prisma/                           # Schema + migrations
 ```
+
+---
+
+## Troubleshooting
+
+**Build fails with `Cannot find module 'opentype.module'`** — `@univerjs/engine-render` looks for an extension-less alias. Fix:
+```bash
+ln -sf opentype.module.js node_modules/opentype.js/dist/opentype.module
+```
+The repo's `postinstall` script attempts this automatically; if it silently failed (often because `prisma generate` errored first), just run the symlink command manually.
+
+**Prisma cache permission errors** — if `prisma generate` complains about `EACCES` on `~/.cache/prisma`, run with a clean cache dir: `HOME=/tmp/prisma-home npx prisma generate`.
+
+**Website mode shows "WebContainer not supported"** — WebContainer requires `SharedArrayBuffer`, which only works on Chromium-based desktop browsers (Chrome, Edge, Arc). Mobile and Safari fall back to read-only.
 
 ---
 
@@ -216,6 +296,8 @@ PRs are welcome. For larger changes, open an issue first so we can align on dire
 2. Create a branch (`git checkout -b feature/your-feature`)
 3. Commit your changes
 4. Open a pull request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more.
 
 ---
 

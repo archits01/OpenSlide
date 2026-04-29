@@ -7,7 +7,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon,
   Share03Icon,
-  PlayIcon,
   Copy01Icon,
   CopyCheckIcon,
   Cancel01Icon,
@@ -22,19 +21,24 @@ import { SettingsModal } from "@/components/shared/SettingsModal";
 import { useProfile, clearProfileCache } from "@/lib/hooks/useProfile";
 import { ConnectorPopover } from "@/components/shared/ConnectorPopover";
 import { ConnectorModal } from "@/components/shared/ConnectorModal";
+import { KitPicker } from "@/components/shared/KitPicker";
 
 interface EditorTopBarProps {
   title: string;
-  sessionType?: "slides" | "docs";
+  sessionType?: "slides" | "docs" | "sheets" | "website";
   isStreaming: boolean;
   onBack?: () => void;
-  onPresent?: () => void;
-  slidesCount?: number;
   sessionId: string;
   readonly?: boolean;
   isPublic?: boolean;
   isReplay?: boolean;
   onShareChange?: (isPublic: boolean, isReplay: boolean) => void;
+  /** Current session brand kit id (null = uses user's default). */
+  brandKitId?: string | null;
+  /** Called when the user picks a different kit. Parent should PATCH /api/sessions. */
+  onBrandKitChange?: (kitId: string | null) => void;
+  /** Callback for "Restyle with kit" button — prefills the chat with a canned prompt. */
+  onRestyleWithKit?: () => void;
 }
 
 // ── Toggle switch ─────────────────────────────────────────────────────────────
@@ -80,7 +84,7 @@ function SharePopover({
   initialIsPublic: boolean;
   initialIsReplay: boolean;
   onShareChange?: (isPublic: boolean, isReplay: boolean) => void;
-  sessionType?: "slides" | "docs";
+  sessionType?: "slides" | "docs" | "sheets" | "website";
 }) {
   const isDocsMode = sessionType === "docs";
   const [isPublic, setIsPublic] = useState(initialIsPublic);
@@ -238,7 +242,7 @@ function SharePopover({
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export function EditorTopBar({ title, sessionType = "slides", isStreaming, onBack, onPresent, slidesCount = 0, sessionId, readonly = false, isPublic: initialIsPublic = false, isReplay: initialIsReplay = false, onShareChange }: EditorTopBarProps) {
+export function EditorTopBar({ title, sessionType = "slides", isStreaming, onBack, sessionId, readonly = false, isPublic: initialIsPublic = false, isReplay: initialIsReplay = false, onShareChange, brandKitId, onBrandKitChange, onRestyleWithKit }: EditorTopBarProps) {
   const isDocsMode = sessionType === "docs";
   const [user, setUser] = useState<User | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -252,9 +256,9 @@ export function EditorTopBar({ title, sessionType = "slides", isStreaming, onBac
   const shareRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   useEffect(() => {
@@ -298,7 +302,6 @@ export function EditorTopBar({ title, sessionType = "slides", isStreaming, onBac
       style={{
         height: 60,
         padding: "0 16px 0 18px",
-        borderBottom: "1px solid var(--border)",
       }}
     >
       {/* Left: ← · title · [Generating] */}
@@ -380,24 +383,34 @@ export function EditorTopBar({ title, sessionType = "slides", isStreaming, onBac
       ) : null}
       <div className="flex items-center gap-2.5" style={{ display: readonly ? "none" : undefined }}>
 
-        {onPresent && slidesCount > 0 && !isDocsMode && (
+        {/* Brand kit picker — only for branded modes (not website). */}
+        {sessionType !== "website" && onBrandKitChange && (
+          <KitPicker
+            value={brandKitId ?? null}
+            onChange={onBrandKitChange}
+            compact
+            disabled={isStreaming}
+          />
+        )}
+
+        {/* Restyle with kit — prefills the chat with a canned regenerate prompt. */}
+        {sessionType !== "website" && onRestyleWithKit && (
           <button
-            onClick={onPresent}
-            title="Present"
+            onClick={onRestyleWithKit}
+            disabled={isStreaming}
+            title="Re-render every slide using the current brand kit's design system and layouts"
             style={{
-              display: "flex", alignItems: "center", gap: 7,
-              height: 34, padding: "0 16px",
-              borderRadius: 8, border: "none",
-              background: "var(--accent)", color: "white",
-              fontSize: 13, fontWeight: 500, cursor: "pointer",
-              letterSpacing: "-0.01em", flexShrink: 0,
-              transition: "background 100ms, opacity 100ms",
+              padding: "5px 10px", borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "var(--bg)",
+              color: "var(--text2)",
+              fontSize: 11, fontWeight: 500,
+              cursor: isStreaming ? "not-allowed" : "pointer",
+              opacity: isStreaming ? 0.5 : 1,
+              whiteSpace: "nowrap",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-hover)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
           >
-            <HugeiconsIcon icon={PlayIcon} size={13} />
-            Present
+            Restyle
           </button>
         )}
 

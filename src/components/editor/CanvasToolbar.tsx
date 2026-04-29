@@ -119,12 +119,13 @@ interface CanvasToolbarProps {
   onCancelEdit?: () => void;
   isEditMode?: boolean;
   sessionId: string;
-  sessionType?: "slides" | "docs";
   readonly?: boolean;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onPresent?: () => void;
+  slidesCount?: number;
 }
 
 function CanvasIconButton({
@@ -208,8 +209,22 @@ const DOC_EXPORT_FORMATS = [
   },
 ];
 
-function DownloadDropdown({ onClose, onExport, sessionType = "slides" }: { onClose: () => void; onExport: (format: string) => void; sessionType?: "slides" | "docs" }) {
-  const formats = sessionType === "docs" ? DOC_EXPORT_FORMATS : SLIDE_EXPORT_FORMATS;
+const SHEET_EXPORT_FORMATS = [
+  {
+    id: "xlsx",
+    label: "Excel Workbook",
+    description: "Download as .xlsx",
+    iconBg: "#DCFCE7",
+    iconColor: "#16A34A",
+    icon: Doc01Icon,
+  },
+];
+
+function DownloadDropdown({ onClose, onExport, sessionType = "slides" }: { onClose: () => void; onExport: (format: string) => void; sessionType?: "slides" | "docs" | "sheets" | "website" }) {
+  const formats =
+    sessionType === "docs" ? DOC_EXPORT_FORMATS :
+    sessionType === "sheets" ? SHEET_EXPORT_FORMATS :
+    SLIDE_EXPORT_FORMATS;
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96, y: -6 }}
@@ -283,7 +298,7 @@ function DownloadDropdown({ onClose, onExport, sessionType = "slides" }: { onClo
   );
 }
 
-export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onSaveEdit, onCancelEdit, isEditMode = false, sessionId, sessionType = "slides", readonly = false, onUndo, onRedo, canUndo = false, canRedo = false }: CanvasToolbarProps) {
+export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onSaveEdit, onCancelEdit, isEditMode = false, sessionId, readonly = false, onUndo, onRedo, canUndo = false, canRedo = false, onPresent, slidesCount = 0 }: CanvasToolbarProps) {
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const downloadRef = useRef<HTMLDivElement>(null);
@@ -301,7 +316,7 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
   }, [downloadOpen]);
 
   async function handleExport(format: string) {
-    if (format !== "pptx" && format !== "pdf" && format !== "docx") return;
+    if (format !== "pptx" && format !== "pdf" && format !== "docx" && format !== "xlsx") return;
     setExporting(true);
     const toastId = toast.custom(
       (id) => <ExportToastContent status="loading" format={format} toastId={id} />,
@@ -317,8 +332,8 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const ext = format === "docx" ? "docx" : format === "pptx" ? "pptx" : "pdf";
-      const defaultName = sessionType === "docs" ? `document.${ext}` : `presentation.${ext}`;
+      const ext = format;
+      const defaultName = `presentation.${ext}`;
       a.download = res.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? defaultName;
       a.click();
       URL.revokeObjectURL(url);
@@ -348,7 +363,6 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
       >
         {/* Left: Slide / Code toggle + Undo / Redo */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* Slide / Code segmented toggle */}
           <div
             style={{
               display: "flex", alignItems: "center",
@@ -358,7 +372,7 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
             {(["slide", "code"] as ViewMode[]).map((mode) => {
               const active = viewMode === mode;
               const icon = mode === "slide" ? BrowserIcon : SourceCodeIcon;
-              const label = mode === "slide" ? (sessionType === "docs" ? "Page" : "Slide") : "Code";
+              const label = mode === "slide" ? "Slide" : "Code";
               return (
                 <button
                   key={mode}
@@ -436,7 +450,7 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
             </CanvasIconButton>
           )}
 
-          {/* Download with dropdown */}
+          {/* Download — PDF / PPTX */}
           <div ref={downloadRef} style={{ position: "relative" }}>
             <CanvasIconButton
               title={exporting ? "Exporting…" : "Download"}
@@ -447,14 +461,39 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
             </CanvasIconButton>
             <AnimatePresence>
               {downloadOpen && (
-                <DownloadDropdown onClose={() => setDownloadOpen(false)} onExport={handleExport} sessionType={sessionType} />
+                <DownloadDropdown onClose={() => setDownloadOpen(false)} onExport={handleExport} sessionType="slides" />
               )}
             </AnimatePresence>
           </div>
 
+          {/* Present */}
+          {!readonly && onPresent && slidesCount > 0 && !isEditMode && (
+            <>
+              <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px", flexShrink: 0 }} />
+              <button
+                onClick={onPresent}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  height: 34, padding: "0 14px", borderRadius: 9,
+                  border: "none",
+                  background: "var(--accent)", color: "white",
+                  fontSize: 13, fontWeight: 500, cursor: "pointer",
+                  letterSpacing: "-0.01em", flexShrink: 0,
+                  transition: "background 100ms",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-hover)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent)"; }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Present
+              </button>
+            </>
+          )}
+
+          {/* Edit + Close */}
           {!readonly && !isEditMode && (
             <>
-              {/* Edit pill button */}
+              <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px", flexShrink: 0 }} />
               <button
                 title="Edit"
                 onClick={onEdit}
@@ -482,11 +521,8 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
                 <HugeiconsIcon icon={Edit04Icon} size={14} />
                 Edit
               </button>
-
-              {/* Divider */}
               <div style={{ width: 1, height: 16, background: "var(--border)", margin: "0 4px", flexShrink: 0 }} />
-
-              <CanvasIconButton title="Close slides" onClick={onClose}>
+              <CanvasIconButton title="Close" onClick={onClose}>
                 <HugeiconsIcon icon={Cancel01Icon} size={16} />
               </CanvasIconButton>
             </>
@@ -531,8 +567,6 @@ export function CanvasToolbar({ viewMode, onViewModeChange, onClose, onEdit, onS
         </div>
       </div>
 
-      {/* Bottom divider */}
-      <div style={{ height: 1, background: "var(--border)", margin: "0 16px", flexShrink: 0 }} />
     </div>
   );
 }

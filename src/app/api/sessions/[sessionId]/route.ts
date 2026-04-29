@@ -21,6 +21,24 @@ export async function PATCH(
   if (typeof body.isPublic === "boolean") session!.isPublic = body.isPublic;
   if (typeof body.isReplay === "boolean") session!.isReplay = body.isReplay;
 
+  // Brand kit override for this session.
+  //   - "string"  → set explicit kit (must belong to user)
+  //   - null      → clear override (next chat turn falls back to user's default)
+  //   - undefined → unchanged
+  if (body.brandKitId === null) {
+    session!.brandKitId = null;
+  } else if (typeof body.brandKitId === "string") {
+    const { prisma } = await import("@/lib/db");
+    const kit = await prisma.brandKit.findUnique({
+      where: { id: body.brandKitId },
+      select: { id: true, userId: true },
+    });
+    if (!kit || kit.userId !== user.id) {
+      return Response.json({ error: "Brand kit not found" }, { status: 404 });
+    }
+    session!.brandKitId = body.brandKitId;
+  }
+
   // If going private, also turn off replay
   if (session!.isPublic === false) session!.isReplay = false;
 
@@ -30,7 +48,29 @@ export async function PATCH(
     if (slide) slide.content = body.content;
   }
 
+  // Sheet workbook update (from SheetCanvas edits)
+  if (typeof body.slideId === "string" && typeof body.workbookJson === "string") {
+    const slide = session!.slides.find(s => s.id === body.slideId);
+    if (slide) {
+      slide.workbookJson = body.workbookJson;
+      if (typeof body.workbookSheetCount === "number") {
+        slide.workbookSheetCount = body.workbookSheetCount;
+      } else {
+        // Derive sheet count from the workbook payload when not provided
+        try {
+          const parsed = JSON.parse(body.workbookJson);
+          const order = Array.isArray(parsed?.sheetOrder) ? parsed.sheetOrder.length : undefined;
+          if (typeof order === "number") slide.workbookSheetCount = order;
+        } catch { /* ignore parse errors */ }
+      }
+    }
+  }
+
   await saveSession(session!);
 
-  return Response.json({ isPublic: session!.isPublic, isReplay: session!.isReplay });
+  return Response.json({
+    isPublic: session!.isPublic,
+    isReplay: session!.isReplay,
+    brandKitId: session!.brandKitId ?? null,
+  });
 }

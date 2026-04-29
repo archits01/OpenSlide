@@ -47,9 +47,9 @@ interface AssetPickerModalProps {
 
 export function AssetPickerModal({ open, onClose, sessionId, onAttach }: AssetPickerModalProps) {
   const supabaseRef = useRef<SupabaseClient | null>(null);
-  function getSupabase() {
+  function getSupabase(): SupabaseClient {
     if (!supabaseRef.current) supabaseRef.current = createClient();
-    return supabaseRef.current;
+    return supabaseRef.current!;
   }
 
   const [assets, setAssets] = useState<AssetItem[]>([]);

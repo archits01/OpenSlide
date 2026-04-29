@@ -128,8 +128,24 @@ export const createSlideTool: AgentTool = {
     required: ["title", "content"],
   },
 
-  async execute(rawInput: unknown): Promise<Slide> {
+  async execute(rawInput: unknown, _signal?: AbortSignal, context?: import("./types").AgentToolContext): Promise<Slide> {
     const input = rawInput as CreateSlideInput;
+
+    // Architectural guard: when a brand kit is active, the model must not embed
+    // literal external image URLs (it tends to hallucinate logo CDNs). Strip
+    // any <img> with a non-placeholder src and surface a warning.
+    if (context?.activeBrandKit && input.content) {
+      const hallucinatedImgRe = /<img[^>]*\bsrc=["']https?:\/\/[^"']+["'][^>]*>/gi;
+      const matches = input.content.match(hallucinatedImgRe);
+      if (matches && matches.length > 0) {
+        console.warn(
+          `[create-slide] Brand-kit active (${context.activeBrandKit.brandName}) — stripping ${matches.length} inline <img> tag(s) with literal URLs. Model should use {{brand.logo.url}} or omit images instead.`,
+        );
+        // Surgically remove offending tags. The placeholder template (if any)
+        // remains; literal-URL tags are dropped.
+        input.content = input.content.replace(hallucinatedImgRe, "");
+      }
+    }
 
     // Template-driven cover slide
     if (input.type === "title" && (input.index === 0 || input.index === undefined || input.index === -1) && input.cover_data) {

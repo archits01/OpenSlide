@@ -21,9 +21,11 @@ import type {
   Slide,
   OutlineSlide,
   SessionSummary,
+  SessionType,
   ToolCallEntry,
   SessionAttachment,
 } from "./types";
+import { validSessionType } from "./types";
 
 // ─── Redis cache (Upstash) ────────────────────────────────────────────────────
 
@@ -49,7 +51,7 @@ function toSession(row: any): Session {
   return {
     id: row.id,
     title: row.title,
-    type: (row.type === "docs" ? "docs" : "slides") as "slides" | "docs",
+    type: validSessionType(row.type),
     logoUrl: row.logoUrl ?? null,
     theme: row.theme ?? null,
     themeColors: (row.themeColors as Record<string, string>) ?? null,
@@ -66,6 +68,14 @@ function toSession(row: any): Session {
     classificationConfidence: (row.classificationConfidence as Session["classificationConfidence"]) ?? null,
     classificationMethod: (row.classificationMethod as Session["classificationMethod"]) ?? null,
     classifiedAt: row.classifiedAt?.getTime() ?? null,
+    websiteFilesJson: (row.websiteFilesJson as Record<string, string>) ?? null,
+    websiteEnvVars: row.websiteEnvVars ?? null,
+    previewScreenshotUrl: row.previewScreenshotUrl ?? null,
+    webcontainerSnapshotUrl: row.webcontainerSnapshotUrl ?? null,
+    websiteSandboxDirty: row.websiteSandboxDirty ?? false,
+    websiteTemplateName: (row as any).websiteTemplateName ?? null,
+    brandKitId: (row as any).brandKitId ?? null,
+    topicSubject: (row as any).topicSubject ?? null,
     slides: row.slides.map((s: any) => ({
       id: s.id,
       index: s.index,
@@ -74,6 +84,8 @@ function toSession(row: any): Session {
       layout: s.layout as Slide["layout"],
       theme: s.theme ?? undefined,
       notes: s.notes ?? undefined,
+      workbookJson: s.workbookJson ?? undefined,
+      workbookSheetCount: s.workbookSheetCount ?? undefined,
     })),
     outline: row.outline
       ? {
@@ -115,7 +127,7 @@ export async function createSession(
   id: string,
   title = "Untitled Presentation",
   userId?: string | null,
-  type: "slides" | "docs" = "slides"
+  type: SessionType = "slides"
 ): Promise<Session> {
   const now = new Date();
 
@@ -158,19 +170,21 @@ export async function saveSession(session: Session): Promise<void> {
   session.updatedAt = Date.now();
   const updatedAt = new Date(session.updatedAt);
 
-  // 1. Write to Redis first so data is safe even if Postgres is slow
-  const redis = getRedis();
-  await redis.setex(`session:${session.id}`, CACHE_TTL, JSON.stringify(session));
+  // 1. Postgres first — reliable, no size limits, no payload constraints.
+  //    Awaited so a Vercel hard-kill can't truncate the write mid-flight.
+  await persistToPostgres(session, updatedAt).catch((err) => {
+    console.error("[saveSession] Postgres write failed:", err);
+  });
 
-  // 2. Persist to Postgres — fire-and-forget durability backup
-  //    Redis is the primary store (written above). Postgres is for durability.
-  //    Don't block the SSE response on a slow PgBouncer transaction.
-  void persistToPostgres(session, updatedAt).catch((err) => {
-    console.error("[saveSession] Postgres write failed (data safe in Redis):", err);
+  // 2. Redis cache — best-effort read cache only. If it fails (e.g. payload > 1MB)
+  //    data is already safe in Postgres above.
+  const redis = getRedis();
+  redis.setex(`session:${session.id}`, CACHE_TTL, JSON.stringify(session)).catch((err) => {
+    console.warn("[saveSession] Redis cache update failed (data safe in Postgres):", err);
   });
 }
 
-/** Persist session to Postgres. Runs as fire-and-forget from saveSession(). */
+/** Persist session to Postgres. Primary store — called with await from saveSession(). */
 async function persistToPostgres(session: Session, updatedAt: Date): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await prisma.$transaction(async (tx: any) => {
@@ -191,6 +205,14 @@ async function persistToPostgres(session: Session, updatedAt: Date): Promise<voi
       classificationConfidence: session.classificationConfidence ?? null,
       classificationMethod: session.classificationMethod ?? null,
       classifiedAt: session.classifiedAt ? new Date(session.classifiedAt) : null,
+      websiteFilesJson: session.websiteFilesJson ?? undefined,
+      websiteEnvVars: session.websiteEnvVars ?? null,
+      previewScreenshotUrl: session.previewScreenshotUrl ?? null,
+      webcontainerSnapshotUrl: session.webcontainerSnapshotUrl ?? null,
+      websiteSandboxDirty: session.websiteSandboxDirty ?? false,
+      websiteTemplateName: session.websiteTemplateName ?? null,
+      brandKitId: session.brandKitId ?? null,
+      topicSubject: session.topicSubject ?? null,
       updatedAt,
       userId: session.userId ?? null,
     };
@@ -218,6 +240,8 @@ async function persistToPostgres(session: Session, updatedAt: Date): Promise<voi
           layout: s.layout,
           theme: s.theme ?? null,
           notes: s.notes ?? null,
+          workbookJson: s.workbookJson ?? null,
+          workbookSheetCount: s.workbookSheetCount ?? null,
         },
         update: {
           index: s.index,
@@ -226,6 +250,8 @@ async function persistToPostgres(session: Session, updatedAt: Date): Promise<voi
           layout: s.layout,
           theme: s.theme ?? null,
           notes: s.notes ?? null,
+          workbookJson: s.workbookJson ?? null,
+          workbookSheetCount: s.workbookSheetCount ?? null,
         },
       });
     }
@@ -268,6 +294,7 @@ export async function listSessions(
       title: true,
       updatedAt: true,
       lastOpenedAt: true,
+      previewScreenshotUrl: true,
       slides: {
         take: 1,
         orderBy: { index: "asc" },
@@ -298,6 +325,7 @@ export async function listSessions(
           theme: r.slides[0].theme ?? "minimal",
         }
       : undefined,
+    previewScreenshotUrl: r.previewScreenshotUrl ?? null,
   }));
 
   return {

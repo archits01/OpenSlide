@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
-import { createSession, listSessions, getSession, deleteSession, touchSession } from "@/lib/redis";
+import { createSession, listSessions, getSession, deleteSession, touchSession, saveSession } from "@/lib/redis";
 import { requireAuth, isResponse, requireOwnership } from "@/lib/api-helpers";
+import { prisma } from "@/lib/db";
 import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/sessions — create a new session
+// POST /api/sessions — create a new session (or fork an existing one)
 export async function POST(req: NextRequest) {
   const authResult = await requireAuth();
   if (isResponse(authResult)) return authResult;
@@ -32,8 +33,37 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const id = body.id ?? randomUUID();
-    const type = body.docsMode ? "docs" : "slides" as const;
-    const title = body.title ?? (type === "docs" ? "Untitled Document" : "Untitled Presentation");
+
+    // ── Fork path ────────────────────────────────────────────────────────────
+    if (body.forkFromSessionId) {
+      const source = await getSession(body.forkFromSessionId);
+      if (!source) return Response.json({ error: "Source session not found" }, { status: 404 });
+      const denied = requireOwnership(source, user.id);
+      if (denied) return denied;
+
+      const forkCount: number = body.forkMessageCount ?? source.messages.length;
+      const forkFiles: Record<string, string> = body.forkWebsiteFiles ?? source.websiteFilesJson ?? {};
+      const title = body.title ?? (source.title + " (fork)");
+
+      const forked = await createSession(id, title, user.id, source.type);
+      // Copy truncated messages + files
+      forked.messages = source.messages.slice(0, forkCount);
+      forked.websiteFilesJson = forkFiles;
+      await saveSession(forked);
+      return Response.json({ id, session: forked }, { status: 201 });
+    }
+
+    // ── Normal create path ────────────────────────────────────────────────────
+    const type: "slides" | "docs" | "sheets" | "website" = body.websiteMode
+      ? "website"
+      : body.sheetsMode
+        ? "sheets"
+        : body.docsMode
+          ? "docs"
+          : "slides";
+    const defaultTitle =
+      type === "sheets" ? "Untitled Spreadsheet" : type === "docs" ? "Untitled Document" : type === "website" ? "Untitled Website" : "Untitled Presentation";
+    const title = body.title ?? defaultTitle;
 
     const session = await createSession(id, title, user.id, type);
     return Response.json({ session }, { status: 201 });
@@ -43,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/sessions — touch lastOpenedAt (called when user opens a session)
+// PATCH /api/sessions — touch lastOpenedAt or update specific fields
 export async function PATCH(req: NextRequest) {
   const authResult = await requireAuth();
   if (isResponse(authResult)) return authResult;
@@ -58,11 +88,33 @@ export async function PATCH(req: NextRequest) {
     const denied = requireOwnership(session, user.id);
     if (denied) return denied;
 
-    await touchSession(id);
-    return Response.json({ touched: id });
+    // Optional field updates alongside the touch
+    if (body.truncateMessagesTo !== undefined) {
+      const count = Number(body.truncateMessagesTo);
+      if (!Number.isFinite(count) || count < 0) {
+        return Response.json({ error: "Invalid truncateMessagesTo" }, { status: 400 });
+      }
+      if (session) {
+        const truncated = { ...session, messages: session.messages.slice(0, count) };
+        await saveSession(truncated);
+      }
+    } else if (body.websitePublishedUrl !== undefined) {
+      await prisma.session.update({
+        where: { id },
+        data: { websitePublishedUrl: body.websitePublishedUrl ?? null },
+      });
+      // Invalidate Redis so next load gets the fresh value
+      if (session) {
+        await saveSession({ ...session, websitePublishedUrl: body.websitePublishedUrl ?? null });
+      }
+    } else {
+      await touchSession(id);
+    }
+
+    return Response.json({ ok: true });
   } catch (err) {
     console.error("[sessions] PATCH error:", err);
-    return Response.json({ error: "Failed to touch session" }, { status: 500 });
+    return Response.json({ error: "Failed to update session" }, { status: 500 });
   }
 }
 

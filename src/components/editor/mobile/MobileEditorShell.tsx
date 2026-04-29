@@ -10,7 +10,12 @@ import {
 } from "@hugeicons/core-free-icons";
 import { ChatPanel } from "@/components/editor/ChatPanel";
 import { SlideCanvas, CodeView, type SlideCanvasHandle } from "@/components/editor/SlideCanvas";
+import { SheetCanvas } from "@/components/editor/SheetCanvas";
+import { WebsiteCanvas } from "@/components/editor/website/WebsiteCanvas";
 import { CanvasToolbar, type ViewMode } from "@/components/editor/CanvasToolbar";
+import { DocsToolbar } from "@/components/editor/DocsToolbar";
+import { SheetsToolbar } from "@/components/editor/SheetsToolbar";
+import { WebsiteToolbar } from "@/components/editor/WebsiteToolbar";
 import { InputToolbar } from "@/components/shared/InputToolbar";
 import { SlidesWidget } from "@/components/editor/SlidesWidget";
 import type { Slide } from "@/lib/redis";
@@ -22,7 +27,7 @@ export type MobileTab = "chat" | "canvas";
 
 interface MobileEditorShellProps {
   sessionTitle: string;
-  sessionType: "slides" | "docs";
+  sessionType: "slides" | "docs" | "sheets" | "website";
   slides: Slide[];
   theme: ThemeName;
   themeColors?: ThemeColors;
@@ -52,6 +57,10 @@ interface MobileEditorShellProps {
   onAddToChat: (text: string) => void;
   onSetAttachedSlideText: (text: string | null) => void;
   sessionId: string;
+  // Website mode (optional — only passed when sessionType === "website")
+  websiteFiles?: Record<string, string>;
+  websitePreviewScreenshotUrl?: string | null;
+  websiteEnvVarNames?: string[];
 }
 
 export function MobileEditorShell({
@@ -86,8 +95,12 @@ export function MobileEditorShell({
   onAddToChat,
   onSetAttachedSlideText,
   sessionId,
+  websiteFiles,
+  websitePreviewScreenshotUrl,
+  websiteEnvVarNames,
 }: MobileEditorShellProps) {
   const [activeTab, setActiveTab] = useState<MobileTab>("chat");
+  const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const hasSlides = slides.length > 0 || !!buildingSlide;
 
   // Auto-switch to canvas when first slide arrives
@@ -255,23 +268,76 @@ export function MobileEditorShell({
           className="absolute inset-0 flex flex-col"
           style={{ display: activeTab === "canvas" ? "flex" : "none" }}
         >
-          <CanvasToolbar
-            viewMode={viewMode}
-            onViewModeChange={onViewModeChange}
-            onClose={undefined}
-            onEdit={onEdit}
-            onSaveEdit={onSaveEdit}
-            onCancelEdit={onCancelEdit}
-            isEditMode={isEditMode}
-            sessionId={sessionId}
-            sessionType={sessionType}
-            onUndo={onUndo}
-            onRedo={onRedo}
-            canUndo={canUndo}
-            canRedo={canRedo}
-          />
-          <div className="flex-1 relative overflow-hidden" style={{ background: "var(--bg2)" }}>
-            {viewMode === "slide" ? (
+          {sessionType === "sheets" ? (
+            <SheetsToolbar sessionId={sessionId} />
+          ) : sessionType === "website" ? (
+            <WebsiteToolbar
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
+              sessionId={sessionId}
+              sessionTitle={sessionTitle}
+              files={websiteFiles ?? {}}
+              readonly
+            />
+          ) : sessionType === "docs" ? (
+            <DocsToolbar
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
+              onEdit={onEdit}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+              isEditMode={isEditMode}
+              sessionId={sessionId}
+              onUndo={onUndo}
+              onRedo={onRedo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+            />
+          ) : (
+            <CanvasToolbar
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
+              onEdit={onEdit}
+              onSaveEdit={onSaveEdit}
+              onCancelEdit={onCancelEdit}
+              isEditMode={isEditMode}
+              sessionId={sessionId}
+              onUndo={onUndo}
+              onRedo={onRedo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+            />
+          )}
+          <div
+            className="flex-1 relative"
+            style={{ background: sessionType === "sheets" ? "var(--sheet-canvas-bg, #FBF8F3)" : "var(--bg2)", overflow: sessionType === "sheets" ? "visible" : "hidden" }}
+          >
+            {sessionType === "website" ? (
+              <WebsiteCanvas
+                sessionId={sessionId}
+                files={websiteFiles ?? {}}
+                previewScreenshotUrl={websitePreviewScreenshotUrl ?? null}
+                snapshotUrl={null}
+                envVarsDecrypted={{}}
+                envVarNames={websiteEnvVarNames ?? []}
+                viewMode={viewMode === "code" ? "code" : "preview"}
+                isMobile
+              />
+            ) : sessionType === "sheets" ? (
+              <SheetCanvas
+                slides={slides}
+                activeSheetId={activeSheetId ?? undefined}
+                onActiveSheetChange={setActiveSheetId}
+                onSheetsEdited={(slideId, workbookJson) => {
+                  // Persist to server so edits survive reload
+                  fetch(`/api/sessions/${sessionId}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ slideId, workbookJson }),
+                  }).catch((err) => console.warn("[mobile sheet save]", err));
+                }}
+              />
+            ) : viewMode === "slide" ? (
               <SlideCanvas
                 ref={canvasRef}
                 slides={slides}

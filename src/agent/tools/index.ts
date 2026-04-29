@@ -1,5 +1,5 @@
 // Plugin architecture — all tools come from providers
-// New capabilities (MCP, memory, etc.) plug in without touching the core loop
+// New capabilities (integrations, memory, etc.) plug in without touching the core loop
 
 export type { AgentTool, ToolProvider, AgentToolContext } from './types';
 import type { AgentTool, ToolProvider } from './types';

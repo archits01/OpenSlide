@@ -4,8 +4,8 @@
  */
 
 import type { Slide, LogoResult } from "./types";
-import { resolveThemeColors } from "@/agent/tools/set-theme";
-import type { ThemeName, ThemeColors } from "@/agent/tools/set-theme";
+import { resolveThemeColors } from "@/agent/tools/theme-defs";
+import type { ThemeName, ThemeColors } from "@/agent/tools/theme-defs";
 import { getMonogram } from "@/agent/tools/fetch-logo";
 
 export type { LogoResult };
@@ -20,7 +20,7 @@ function buildThemeVars(theme: ThemeName, themeColors?: ThemeColors): string {
 function buildSlideStyles(theme: ThemeName, themeColors?: ThemeColors, isDoc = false): string {
   const t = themeColors ?? resolveThemeColors(theme);
   if (isDoc) {
-    return `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');${buildThemeVars(theme, themeColors)}html,body{margin:0;padding:0;width:816px;height:1056px;overflow:hidden;background:#FFFFFF;color:#1a1a1a;font-family:'Inter',system-ui,-apple-system,sans-serif}`;
+    return `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');${buildThemeVars(theme, themeColors)}*{box-sizing:border-box}html,body{margin:0;padding:0;width:816px;height:1056px;overflow:hidden;background:#FFFFFF;color:#1a1a1a;font-family:'Inter',system-ui,-apple-system,sans-serif}.page{width:816px;height:1056px;display:flex;flex-direction:column;overflow:hidden;position:relative}.page-footer{margin-top:auto;display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #E5E7EB;flex-shrink:0;font-size:9px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:1.5px}.page-footer>*:last-child{font-size:10px;letter-spacing:0;text-transform:none}`;
   }
   return `${buildThemeVars(theme, themeColors)}html,body{margin:0;padding:0;width:1280px;height:720px;overflow:hidden;background:${t.bg};color:${t.text};font-family:system-ui,-apple-system,sans-serif}.slide-root{width:1280px;height:720px;box-sizing:border-box;position:relative;overflow:hidden}.slide-headline{font-size:48px;font-weight:600;letter-spacing:-0.03em;line-height:1.1;margin:0}.slide-heading{font-size:34px;font-weight:500;letter-spacing:-0.02em;line-height:1.2;margin:0}.slide-subtitle{font-size:20px;font-weight:400;color:${t.secondary};margin:0}.slide-bullets{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}.slide-bullets li{font-size:20px;line-height:1.5;padding-left:20px;position:relative}.slide-bullets li::before{content:"–";position:absolute;left:0;color:${t.accent}}.stat-number{font-size:72px;font-weight:700;letter-spacing:-0.04em;color:${t.accent};line-height:1}.stat-label{font-size:18px;color:${t.secondary}}`;
 }
@@ -120,7 +120,12 @@ export function buildSlideHtml(
 
   const styles = buildSlideStyles(theme, themeColors, isDoc);
   const buildingCss = isBuilding ? BUILDING_ANIMATION_CSS : "";
-  const rootClass = isDoc ? "" : ' class="slide-root"';
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${styles}${buildingCss}</style></head><body>${logo}<div${rootClass}>${slide.content}</div></body></html>`;
+  // Docs: skip the wrapper div so the skill's page-level CSS (body as flex column)
+  // can actually pin .page-footer at the bottom via margin-top:auto — an interposed
+  // block-layout div would break that flex parent/child relationship.
+  const inner = isDoc
+    ? slide.content
+    : `${logo}<div class="slide-root">${slide.content}</div>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${styles}${buildingCss}</style></head><body>${inner}</body></html>`;
 }
 

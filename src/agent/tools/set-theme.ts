@@ -1,77 +1,26 @@
-import type { AgentTool } from "./index";
+import type { AgentTool, AgentToolContext } from "./index";
+import { DEFAULT_BRAND_VARS, type BrandVars } from "@/lib/brand/types";
+import { THEME_DEFINITIONS, resolveThemeColors, type ThemeName, type ThemeColors } from "./theme-defs";
 
-export type ThemeName = "minimal" | "dark-pro" | "academic" | "bold";
-
-export interface ThemeColors {
-  bg: string;
-  text: string;
-  accent: string;
-  secondary: string;
-  dark: string;
-  accentLight: string;
-  border: string;
-}
+// Re-export for back-compat with all existing call sites.
+export { THEME_DEFINITIONS, resolveThemeColors };
+export type { ThemeName, ThemeColors };
 
 export interface SetThemeInput {
   theme: ThemeName;
   custom_colors?: Partial<ThemeColors>;
 }
 
-export const THEME_DEFINITIONS: Record<ThemeName, ThemeColors & { label: string }> = {
-  minimal: {
-    label: "Minimal",
-    bg: "#FFFFFF",
-    text: "#111111",
-    accent: "#4F46E5",
-    secondary: "rgba(17,17,17,0.55)",
-    dark: "#0F172A",
-    accentLight: "#818CF8",
-    border: "#E2E8F0",
-  },
-  "dark-pro": {
-    label: "Dark Pro",
-    bg: "#0F0F0F",
-    text: "#F5F5F5",
-    accent: "#A78BFA",
-    secondary: "rgba(245,245,245,0.55)",
-    dark: "#1A1A2E",
-    accentLight: "#C4B5FD",
-    border: "rgba(245,245,245,0.12)",
-  },
-  academic: {
-    label: "Academic",
-    bg: "#F8F7F3",
-    text: "#1A1A1A",
-    accent: "#1D4ED8",
-    secondary: "rgba(26,26,26,0.55)",
-    dark: "#1E293B",
-    accentLight: "#60A5FA",
-    border: "#D5D3CD",
-  },
-  bold: {
-    label: "Bold",
-    bg: "#F5F0E8",
-    text: "#111111",
-    accent: "#E11D48",
-    secondary: "rgba(17,17,17,0.55)",
-    dark: "#1C1917",
-    accentLight: "#FB7185",
-    border: "#E2D9CC",
-  },
-};
-
-/** Resolve final theme colors — base preset + optional overrides */
-export function resolveThemeColors(theme: ThemeName, overrides?: Partial<ThemeColors>): ThemeColors {
-  const base = THEME_DEFINITIONS[theme] ?? THEME_DEFINITIONS.minimal;
-  if (!overrides) return { bg: base.bg, text: base.text, accent: base.accent, secondary: base.secondary, dark: base.dark, accentLight: base.accentLight, border: base.border };
+/** Map BrandVars colors → ThemeColors. Single source of truth for the bridge. */
+function brandVarsToThemeColors(vars: BrandVars): ThemeColors {
   return {
-    bg: overrides.bg ?? base.bg,
-    text: overrides.text ?? base.text,
-    accent: overrides.accent ?? base.accent,
-    secondary: overrides.secondary ?? base.secondary,
-    dark: overrides.dark ?? base.dark,
-    accentLight: overrides.accentLight ?? base.accentLight,
-    border: overrides.border ?? base.border,
+    bg: vars.colors.bg,
+    text: vars.colors.text,
+    accent: vars.colors.accent,
+    secondary: vars.colors.textSecondary,
+    dark: vars.colors.dark,
+    accentLight: vars.colors.accentLight,
+    border: vars.colors.border,
   };
 }
 
@@ -80,16 +29,17 @@ export const setThemeTool: AgentTool = {
   description:
     "Set the visual theme for the entire presentation. Updates CSS custom properties " +
     "(--slide-bg, --slide-text, --slide-accent, --slide-secondary) across all slides instantly. " +
-    "Preset themes: minimal (white/indigo), dark-pro (dark/purple), academic (warm/blue), bold (cream/rose). " +
+    "Preset themes: minimal (white/indigo), dark-pro (dark/purple), academic (warm/blue), bold (cream/rose), executive (navy/gold), editorial (cream/terracotta). " +
     "For brand colors: pick the closest preset as base, then pass custom_colors to override specific colors. " +
-    "Example: set_theme({ theme: 'dark-pro', custom_colors: { accent: '#E82127' } }) for dark slides with Tesla red.",
+    "Example: set_theme({ theme: 'dark-pro', custom_colors: { accent: '#E82127' } }) for dark slides with Tesla red. " +
+    "SHORTCUT: when a brand kit is active for this session, you can call set_theme({ theme: 'from_brand_kit' }) with no custom_colors — the server will pull all colors directly from the kit. This is preferred over manually mapping kit colors yourself; it eliminates accidental drops or mis-mappings.",
   input_schema: {
     type: "object",
     properties: {
       theme: {
         type: "string",
-        enum: ["minimal", "dark-pro", "academic", "bold"],
-        description: "Base theme for structural style. Pick the closest match to the brand's aesthetic.",
+        enum: ["minimal", "dark-pro", "academic", "bold", "executive", "editorial", "from_brand_kit"],
+        description: "Base theme for structural style. Pick the closest match to the brand's aesthetic, OR use 'from_brand_kit' to source all colors from the active kit (no custom_colors needed).",
       },
       custom_colors: {
         type: "object",
@@ -109,8 +59,44 @@ export const setThemeTool: AgentTool = {
     required: ["theme"],
   },
 
-  async execute(rawInput: unknown): Promise<{ theme: string; colors: ThemeColors }> {
+  async execute(rawInput: unknown, _signal?: AbortSignal, context?: AgentToolContext): Promise<{ theme: string; colors: ThemeColors; resolvedFromKit?: string }> {
     const input = rawInput as SetThemeInput;
+
+    // "from_brand_kit" — server resolves all colors directly from the active kit.
+    // Removes a class of bugs where the model maps colors manually and drops/mis-maps one.
+    if (input.theme === "from_brand_kit") {
+      if (!context?.activeBrandKit?.id) {
+        throw new Error(
+          "set_theme({ theme: 'from_brand_kit' }) called but no brand kit is active for this session. Either pick a kit on the session or use a preset theme.",
+        );
+      }
+      // Lazy-load prisma so this tool module stays browser-bundle-safe when
+      // imported transitively by client-side helpers (e.g. slide-html).
+      const { prisma } = await import("@/lib/db");
+      const row = await prisma.brandKit.findUnique({
+        where: { id: context.activeBrandKit.id },
+        select: { brandVars: true, name: true },
+      });
+      if (!row) {
+        throw new Error(`Brand kit ${context.activeBrandKit.id} not found`);
+      }
+      const rawVars = (row.brandVars as Partial<BrandVars> | null) ?? {};
+      const vars: BrandVars = {
+        ...DEFAULT_BRAND_VARS,
+        ...rawVars,
+        colors: { ...DEFAULT_BRAND_VARS.colors, ...rawVars.colors },
+        fonts: { ...DEFAULT_BRAND_VARS.fonts, ...rawVars.fonts },
+        logo: { ...DEFAULT_BRAND_VARS.logo, ...rawVars.logo },
+      };
+      const colors = brandVarsToThemeColors(vars);
+      // Server-side overrides still allowed (e.g. for an alternate accent on
+      // one specific deck) — applied on top of the kit's resolved colors.
+      const finalColors = input.custom_colors
+        ? { ...colors, ...input.custom_colors }
+        : colors;
+      return { theme: "from_brand_kit", colors: finalColors, resolvedFromKit: row.name };
+    }
+
     const colors = resolveThemeColors(input.theme, input.custom_colors);
     return { theme: input.theme, colors };
   },

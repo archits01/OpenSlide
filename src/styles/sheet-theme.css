@@ -1,0 +1,22 @@
+/**
+ * Additional sheet UI styling — scrollbar customization only.
+ * Univer's internal CSS variables and class styles are NOT overridden here.
+ */
+
+.sheet-canvas-univer ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.sheet-canvas-univer ::-webkit-scrollbar-track {
+  background: #F0F0F0;
+}
+
+.sheet-canvas-univer ::-webkit-scrollbar-thumb {
+  background: #C0C0C0;
+  border-radius: 4px;
+}
+
+.sheet-canvas-univer ::-webkit-scrollbar-thumb:hover {
+  background: #A0A0A0;
+}

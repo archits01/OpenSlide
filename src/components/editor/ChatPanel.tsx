@@ -162,7 +162,7 @@ function ThinkBlock({ message }: { message: ChatMessage }) {
 
 // ─── Tool Call Card ──────────────────────────────────────────────────────────
 
-function getToolMeta(sessionType?: "slides" | "docs"): Record<string, { icon: React.ReactNode; label: string }> {
+function getToolMeta(sessionType?: "slides" | "docs" | "sheets" | "website"): Record<string, { icon: React.ReactNode; label: string }> {
   const isDoc = sessionType === "docs";
   const item = isDoc ? "page" : "slide";
   const Item = isDoc ? "Page" : "Slide";
@@ -180,6 +180,13 @@ function getToolMeta(sessionType?: "slides" | "docs"): Record<string, { icon: Re
     create_outline: { icon: <HugeiconsIcon icon={FileViewIcon} size={14} />, label: "Plan outline" },
     set_theme: { icon: <HugeiconsIcon icon={ColorPickerIcon} size={14} />, label: "Set theme" },
     reorder_slides: { icon: <HugeiconsIcon icon={ArrowUpDownIcon} size={14} />, label: `Reorder ${Items.toLowerCase()}` },
+    // Website mode tools
+    create_file: { icon: <HugeiconsIcon icon={File01Icon} size={14} />, label: "Create file" },
+    update_file: { icon: <HugeiconsIcon icon={PencilEdit01Icon} size={14} />, label: "Update file" },
+    delete_file: { icon: <HugeiconsIcon icon={Delete01Icon} size={14} />, label: "Delete file" },
+    run_shell_command: { icon: <HugeiconsIcon icon={Idea01Icon} size={14} />, label: "Run command" },
+    list_files: { icon: <HugeiconsIcon icon={FileViewIcon} size={14} />, label: "List files" },
+    read_file: { icon: <HugeiconsIcon icon={Search01Icon} size={14} />, label: "Read file" },
   };
 }
 
@@ -191,6 +198,13 @@ function getDescription(toolName: string, input?: Record<string, unknown>): stri
     case "update_slide": case "update_page": return (input.title as string) ?? null;
     case "create_outline": return ((input.title ?? input.document_title) as string) ?? null;
     case "set_theme": return (input.theme as string) ?? null;
+    case "create_file": case "update_file": case "delete_file": case "read_file":
+      return (input.path as string) ?? null;
+    case "run_shell_command": {
+      const cmd = input.cmd as string | undefined;
+      const args = Array.isArray(input.args) ? (input.args as string[]).join(" ") : "";
+      return cmd ? `${cmd}${args ? ` ${args}` : ""}` : null;
+    }
     default: return null;
   }
 }
@@ -199,7 +213,7 @@ function getSubText(
   toolName: string,
   status: ToolCallStatus["status"],
   input?: Record<string, unknown>,
-  sessionType?: "slides" | "docs"
+  sessionType?: "slides" | "docs" | "sheets" | "website"
 ): string {
   const isDoc = sessionType === "docs";
   const item = isDoc ? "Page" : "Slide";
@@ -229,12 +243,24 @@ function getSubText(
     case "reorder_slides":
     case "reorder_pages":
       return status === "done" ? "Order updated" : "Reordering…";
+    case "create_file":
+      return status === "done" ? "File created" : "Writing file…";
+    case "update_file":
+      return status === "done" ? "File updated" : "Editing file…";
+    case "delete_file":
+      return status === "done" ? "File removed" : "Deleting…";
+    case "run_shell_command":
+      return status === "done" ? "Ran" : "Running…";
+    case "list_files":
+      return status === "done" ? "Listed files" : "Listing…";
+    case "read_file":
+      return status === "done" ? "Read file" : "Reading…";
     default:
       return status === "done" ? "Done" : "Processing…";
   }
 }
 
-function ToolCallCard({ toolCall, sessionType }: { toolCall: ToolCallStatus; sessionType?: "slides" | "docs" }) {
+function ToolCallCard({ toolCall, sessionType }: { toolCall: ToolCallStatus; sessionType?: "slides" | "docs" | "sheets" | "website" }) {
   const [expanded, setExpanded] = useState(false);
   const toolMeta = getToolMeta(sessionType);
   const meta = toolMeta[toolCall.toolName] ?? {
@@ -466,9 +492,38 @@ function ToolCallCard({ toolCall, sessionType }: { toolCall: ToolCallStatus; ses
   );
 }
 
+// ─── Quick Actions Parser ────────────────────────────────────────────────────
+
+interface QuickAction {
+  type: "build" | "chat" | "file";
+  message: string;
+  label: string;
+}
+
+function parseQuickActions(content: string): { cleanContent: string; actions: QuickAction[] } {
+  // Complete block present — strip it and extract actions
+  const blockMatch = content.match(/<quick-actions>([\s\S]*?)<\/quick-actions>/);
+  if (blockMatch) {
+    const cleanContent = content.replace(/<quick-actions>[\s\S]*?<\/quick-actions>/, "").trimEnd();
+    const actions: QuickAction[] = [];
+    const actionRegex = /<action\s+type="(build|chat|file)"\s+(?:message|path)="([^"]*)"[^>]*>([^<]*)<\/action>/g;
+    let m: RegExpExecArray | null;
+    while ((m = actionRegex.exec(blockMatch[1])) !== null) {
+      actions.push({ type: m[1] as "build" | "chat", message: m[2], label: m[3].trim() });
+    }
+    return { cleanContent, actions };
+  }
+  // Partial block still streaming — strip it so raw XML never flashes as text
+  const partialIdx = content.indexOf("<quick-actions>");
+  if (partialIdx !== -1) {
+    return { cleanContent: content.slice(0, partialIdx).trimEnd(), actions: [] };
+  }
+  return { cleanContent: content, actions: [] };
+}
+
 // ─── Message Bubble ──────────────────────────────────────────────────────────
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({ message, onQuickAction, onFileOpen, onRewind, onFork }: { message: ChatMessage; onQuickAction?: (msg: string, isBuild: boolean) => void; onFileOpen?: (path: string) => void; onRewind?: () => void; onFork?: () => void }) {
   const isUser = message.role === "user";
 
   // Error notice — centered pill, no avatar, no bubble
@@ -565,12 +620,17 @@ function MessageBubble({ message }: { message: ChatMessage }) {
               <ResearchProgressCard progress={message.researchProgress} />
             )}
 
-            {message.content && !/^\s*(<div[\s>]|style=|<svg[\s>]|\{"\w+":)/.test(message.content.trim()) && (
-              <div
-                className={`text-[14.5px] leading-[1.6] ${message.isStreaming ? "streaming-cursor" : ""}`}
-                style={{ color: "var(--text)" }}
-              >
-                <ReactMarkdown
+            {(() => {
+              const { cleanContent, actions } = parseQuickActions(message.content ?? "");
+              const displayContent = cleanContent;
+              return (
+                <>
+                  {displayContent && !/^\s*(<div[\s>]|style=|<svg[\s>]|\{"\w+":)/.test(displayContent.trim()) && (
+                    <div
+                      className={`text-[14.5px] leading-[1.6] ${message.isStreaming ? "streaming-cursor" : ""}`}
+                      style={{ color: "var(--text)" }}
+                    >
+                      <ReactMarkdown
                   components={{
                     p: ({ children }) => <p className="mb-4 last:mb-0">{children}</p>,
                     strong: ({ children }) => (
@@ -675,10 +735,78 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                     ),
                   }}
                 >
-                  {message.content}
-                </ReactMarkdown>
-              </div>
-            )}
+                    {displayContent}
+                  </ReactMarkdown>
+                </div>
+              )}
+
+              {/* Quick action pills — shown after streaming completes */}
+              {!message.isStreaming && actions.length > 0 && (onQuickAction || onFileOpen) && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
+                  {actions.map((action, i) => {
+                    const isFile = action.type === "file";
+                    const isBuild = action.type === "build";
+                    const bg = isBuild ? "var(--accent-soft)" : isFile ? "var(--bg2)" : "var(--bg2)";
+                    const bgHover = isBuild ? "rgba(67,56,202,0.12)" : "var(--bg)";
+                    const color = isBuild ? "var(--accent-text)" : "var(--text2)";
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          if (isFile) onFileOpen?.(action.message);
+                          else onQuickAction?.(action.message, isBuild);
+                        }}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 5,
+                          height: 28,
+                          padding: "0 11px",
+                          borderRadius: 999,
+                          border: "1px solid var(--border-strong)",
+                          background: bg,
+                          color,
+                          fontSize: 12.5,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          letterSpacing: "-0.01em",
+                          transition: "background 100ms, border-color 100ms",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = bgHover;
+                          e.currentTarget.style.borderColor = "var(--border-hover)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = bg;
+                          e.currentTarget.style.borderColor = "var(--border-strong)";
+                        }}
+                      >
+                        {isBuild ? (
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0 }}>
+                            <path d="M5 1L9 5L5 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            <path d="M1 5H9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                        ) : isFile ? (
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0 }}>
+                            <path d="M2 1.5h4l2 2V8.5a.5.5 0 01-.5.5h-5a.5.5 0 01-.5-.5v-6A.5.5 0 012 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                            <path d="M6 1.5V3.5H8" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+                          </svg>
+                        ) : (
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ flexShrink: 0 }}>
+                            <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.5"/>
+                            <path d="M5 3.5V5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                            <circle cx="5" cy="6.75" r="0.5" fill="currentColor"/>
+                          </svg>
+                        )}
+                        {action.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
             {/* ConnectCard — rendered when agent requires OAuth connection */}
             {message.connectCard && (
@@ -699,6 +827,53 @@ function MessageBubble({ message }: { message: ChatMessage }) {
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="tool-dot" style={{ animationDelay: `${i * 0.2}s` }} />
                 ))}
+              </div>
+            )}
+
+            {/* Rewind / Fork ghost buttons — appear on hover */}
+            {(onRewind || onFork) && !message.isStreaming && (
+              <div className="rewind-fork-actions" style={{ display: "flex", gap: 4, marginTop: 8, opacity: 0, transition: "opacity 150ms" }}>
+                {onFork && (
+                  <button
+                    onClick={onFork}
+                    title="Fork from here — create a new session branching from this point"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4,
+                      height: 22, padding: "0 8px", borderRadius: 5,
+                      border: "1px solid var(--border)", background: "transparent",
+                      color: "var(--text3)", fontSize: 11, cursor: "pointer",
+                      transition: "background 80ms, color 80ms",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg2)"; e.currentTarget.style.color = "var(--text)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text3)"; }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+                      <path d="M18 9a9 9 0 01-9 9"/>
+                    </svg>
+                    Fork
+                  </button>
+                )}
+                {onRewind && (
+                  <button
+                    onClick={onRewind}
+                    title="Rewind — restore files and history to before this message"
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4,
+                      height: 22, padding: "0 8px", borderRadius: 5,
+                      border: "1px solid var(--border)", background: "transparent",
+                      color: "var(--text3)", fontSize: 11, cursor: "pointer",
+                      transition: "background 80ms, color 80ms",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg2)"; e.currentTarget.style.color = "var(--text)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--text3)"; }}
+                  >
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
+                    </svg>
+                    Rewind
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -759,17 +934,31 @@ function ThemePreview({ input }: { input?: Record<string, unknown> }) {
   );
 }
 
+// ─── Progressive Blur ────────────────────────────────────────────────────────
+
+
 // ─── Chat Panel ──────────────────────────────────────────────────────────────
+
+interface TurnSnapshotRef {
+  chatMessageCount: number;
+  sessionMessageCount: number;
+  websiteFiles: Record<string, string>;
+}
 
 interface ChatPanelProps {
   messages: ChatMessage[];
   toolHistory: ToolCallEntry[];
   isStreaming: boolean;
   compact?: boolean;
-  sessionType?: "slides" | "docs";
+  sessionType?: "slides" | "docs" | "sheets" | "website";
+  onQuickAction?: (message: string, isBuild: boolean) => void;
+  onFileOpen?: (path: string) => void;
+  turnSnapshots?: TurnSnapshotRef[];
+  onRewindToTurn?: (snapshotIndex: number) => void;
+  onForkFromTurn?: (snapshotIndex: number) => void;
 }
 
-export function ChatPanel({ messages, toolHistory, isStreaming, compact, sessionType }: ChatPanelProps) {
+export function ChatPanel({ messages, toolHistory, isStreaming, compact, sessionType, onQuickAction, onFileOpen, turnSnapshots, onRewindToTurn, onForkFromTurn }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -851,10 +1040,33 @@ export function ChatPanel({ messages, toolHistory, isStreaming, compact, session
   );
 
   return (
-    <div className={`flex flex-col h-full overflow-y-auto ${compact ? "px-7" : "px-4"} py-4 no-scrollbar`}>
+    <div
+      className={`flex flex-col h-full overflow-y-auto ${compact ? "px-7" : "px-4"} py-4 no-scrollbar`}
+      style={{
+        maskImage: "linear-gradient(to bottom, transparent 0%, black 7%, black 93%, transparent 100%)",
+        WebkitMaskImage: "linear-gradient(to bottom, transparent 0%, black 7%, black 93%, transparent 100%)",
+      }}
+    >
       <AnimatePresence initial={false}>
-        {renderItems.map((item) => {
+        {renderItems.map((item, renderIdx) => {
           if (item.kind === "message") {
+            // Find the message's index in the messages array
+            const msgIdx = messages.indexOf(item.message);
+            // For an assistant message: find snapshot whose chatMessageCount === msgIdx + 1
+            const forkSnapIdx = (item.message.role === "assistant" && !item.message.isStreaming && turnSnapshots)
+              ? turnSnapshots.findIndex((s) => s.chatMessageCount === msgIdx + 1)
+              : -1;
+            // For a user message: find snapshot before this message (chatMessageCount <= msgIdx)
+            const rewindSnapIdx = (item.message.role === "user" && turnSnapshots && turnSnapshots.length > 0)
+              ? (() => {
+                  // Find the last snapshot whose chatMessageCount <= msgIdx
+                  let best = -1;
+                  for (let si = 0; si < turnSnapshots.length; si++) {
+                    if (turnSnapshots[si].chatMessageCount <= msgIdx) best = si;
+                  }
+                  return best;
+                })()
+              : -1;
             return (
               <motion.div
                 layout
@@ -863,7 +1075,13 @@ export function ChatPanel({ messages, toolHistory, isStreaming, compact, session
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: "spring", stiffness: 260, damping: 25 }}
               >
-                <MessageBubble message={item.message} />
+                <MessageBubble
+                  message={item.message}
+                  onQuickAction={onQuickAction}
+                  onFileOpen={onFileOpen}
+                  onRewind={rewindSnapIdx >= 0 && onRewindToTurn ? () => onRewindToTurn(rewindSnapIdx) : undefined}
+                  onFork={forkSnapIdx >= 0 && onForkFromTurn ? () => onForkFromTurn(forkSnapIdx) : undefined}
+                />
               </motion.div>
             );
           }

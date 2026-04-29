@@ -119,17 +119,13 @@ For each section in the outline, call `create_page` with:
     [PAGE PATTERN CONTENT from page-library.md]
   </div>
 
-  <!-- Page footer (every content page — NOT on cover) -->
-  <div style="display:flex;justify-content:space-between;align-items:center;
-              padding-top:12px;border-top:1px solid #E5E7EB;
-              margin-top:auto;flex-shrink:0;">
-    <span style="font-size:9px;font-weight:600;color:#9CA3AF;
-                 text-transform:uppercase;letter-spacing:1.5px;">
-      Confidential — Internal Use Only
-    </span>
-    <span style="font-size:10px;font-weight:600;color:#9CA3AF;">
-      Page [N]
-    </span>
+  <!-- Page footer (every content page — NOT on cover).
+       The .page-footer class is pre-defined by the canvas — it handles
+       margin-top:auto, the flex layout, the top border, and the typography.
+       Just emit the two spans. -->
+  <div class="page-footer">
+    <span>Confidential — Internal Use Only</span>
+    <span>Page [N]</span>
   </div>
 </div>
 ```

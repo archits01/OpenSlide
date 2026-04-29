@@ -33,9 +33,9 @@ export function requireOwnership(
   return null;
 }
 
-// ─── MCP API Key Auth ────────────────────────────────────────────────────────
+// ─── Developer API Key Auth ──────────────────────────────────────────────────
 
-/** Authenticate via Bearer API key (for MCP tool routes). Returns userId or null. */
+/** Authenticate via Bearer API key (for developer tool routes). Returns userId or null. */
 export async function authenticateApiKey(req: Request): Promise<string | null> {
   const { validateApiKey } = await import("@/lib/api-key");
   const auth = req.headers.get("authorization");

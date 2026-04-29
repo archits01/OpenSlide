@@ -7,12 +7,20 @@ import { NextRequest } from "next/server";
 import { requireAuth, isResponse } from "@/lib/api-helpers";
 import { prisma } from "@/lib/db";
 
+// OSS build: brand kit available to all users — no tier gate.
+async function requirePaidTier(_userId: string): Promise<Response | null> {
+  return null;
+}
+
 // ─── GET /api/brand — fetch active brand config for current user ──────────
 
 export async function GET() {
   const authResult = await requireAuth();
   if (isResponse(authResult)) return authResult;
   const user = authResult;
+
+  const denied = await requirePaidTier(user.id);
+  if (denied) return denied;
 
   const config = await prisma.brandConfig.findFirst({
     where: { userId: user.id, isActive: true },
@@ -28,6 +36,9 @@ export async function POST(req: NextRequest) {
   const authResult = await requireAuth();
   if (isResponse(authResult)) return authResult;
   const user = authResult;
+
+  const denied = await requirePaidTier(user.id);
+  if (denied) return denied;
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
@@ -124,6 +135,9 @@ export async function PUT(req: NextRequest) {
   const authResult = await requireAuth();
   if (isResponse(authResult)) return authResult;
   const user = authResult;
+
+  const denied = await requirePaidTier(user.id);
+  if (denied) return denied;
 
   const body = await req.json().catch(() => null);
   if (!body) {
