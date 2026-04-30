@@ -877,7 +877,7 @@ export function InputToolbar({
                     >
                       {icon}
                     </span>
-                    <span style={{ position: "relative", zIndex: 1 }}>{label}</span>
+                    <span className="hidden sm:inline" style={{ position: "relative", zIndex: 1 }}>{label}</span>
                   </button>
                 );
               })}
