@@ -1,10 +1,13 @@
 import type { AgentTool } from "./index";
 import type { Slide } from "@/lib/types";
-import { SheetEngine } from "@/lib/sheet-engine";
 import { buildSheetHtml, embedWorkbookData } from "@/lib/sheet-html";
 import type { WorkbookData } from "@/lib/sheet-html";
 import { parseA1 } from "./sheet-helpers";
 import type { IWorkbookData } from "@univerjs/core";
+
+// SheetEngine + Univer are loaded dynamically inside execute() so the chat
+// route's module bundle doesn't pull in the ESM-only Univer packages at cold
+// start (which fails under Vercel's nodejs24 external-module loader).
 
 export interface SheetPatch {
   sheetName: string;
@@ -88,6 +91,7 @@ export const updateSheetTool: AgentTool = {
       };
     }
 
+    const { SheetEngine } = await import("@/lib/sheet-engine");
     const engine = new SheetEngine();
     try {
       const workbookData: IWorkbookData = JSON.parse(targetSlide.workbookJson);
